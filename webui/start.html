@@ -31,9 +31,15 @@
         .form-row .field-desc { font-size: 13px; color: #666; margin-top: 2px; }
         .save-btn { background: #1e88e5; color: white; border: none; padding: 12px 30px; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 10px; }
         .save-btn:hover { background: #1565c0; }
+        .save-btn-restart { background: #ff9800; color: white; border: none; padding: 12px 30px; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 10px; margin-left: 10px; }
+        .save-btn-restart:hover { background: #f57c00; }
         .message { margin: 10px 0; padding: 8px; border-radius: 4px; }
         .message.success { background: #d4edda; color: #155724; }
         .message.error { background: #f8d7da; color: #721c24; }
+        .role-item { border: 1px solid #ddd; margin-bottom: 10px; padding: 10px; border-radius: 5px; background: #fafafa; }
+        .role-item summary { cursor: pointer; font-weight: bold; padding: 5px; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+        .role-item summary::-webkit-details-marker { display: none; }
+        .delete-role-btn { background: #f44336; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; }
         .chat-list-header { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; flex-wrap: wrap; }
         .chat-list-header select, .chat-list-header button { padding: 8px 12px; border-radius: 4px; border: 1px solid #ccc; background: white; cursor: pointer; }
         .file-list { display: flex; flex-direction: column; gap: 6px; }
@@ -85,7 +91,9 @@
             <div class="config-form">
                 <div id="config-message"></div>
                 <div id="config-groups"></div>
-                <button class="save-btn" id="save-config-btn">保存配置</button>
+                <!-- 修改为两个按钮 -->
+                <button class="save-btn" id="save-only-btn">仅保存</button>
+                <button class="save-btn-restart" id="save-restart-btn">保存并重启TTS</button>
             </div>
         </div>
         <div class="panel" id="panel-chat">
@@ -111,11 +119,10 @@
             <div class="tutorial">
                 <h2>使用教程</h2>
                 <p>欢迎使用LTVM。以下为基本操作说明：</p>
-                <p><strong>1. 配置文件</strong>：在左侧“配置文件”中可以修改所有机器人运行参数，修改后点击“保存配置”按钮即可生效（需重启机器人）。</p>
-                <p><strong>2. 聊天记录</strong>：查看和管理所有与bot的聊天记录，支持多选删除、查看详情和删除单条消息。</p>
-                <p><strong>3. 日志输出</strong>：实时查看机器人运行日志，便于排查问题。</p>
-                <p><strong>4. 使用教程</strong>：当前页面，提供简要说明。</p>
-                <p>更多高级配置请直接编辑 <code>config.json</code> 文件。</p>
+                <p><strong>1. 配置文件</strong>：在左侧“配置文件”中可以修改所有机器人运行参数，修改后点击“保存配置”按钮即可生效。</p>
+                <p><strong>2. 聊天记录</strong>：查看和管理所有与bot的聊天记录。</p>
+                <p><strong>3. 日志输出</strong>：实时查看机器人运行日志。</p>
+                <p><strong>4. 使用教程</strong>：当前页面。</p>
             </div>
         </div>
     </div>
@@ -147,34 +154,46 @@
         let chatMultiMode = false;
         let selectedMsgIndices = new Set();
 
+        const configGroups = [
+            { title: 'NapCat 连接', keys: ['napcat_ws_url', 'napcat_token'] },
+            { title: 'LLM 大模型', keys: ['llm_base_url', 'llm_model_name', 'num_ctx', 'history_length', 'enable_think', 'llm_timeout'] },
+            { title: '识图模型', keys: ['image_caption_model_name', 'image_caption_timeout'] },
+            { title: 'TTS 基本配置', keys: ['client_base_url', 'model_dir', 'ref_audio_root', 'timeout_seconds', 'prompt_text', 'prompt_lang', 'text_lang', 'device'] },
+            { title: 'TTS 高级参数', keys: ['top_k', 'top_p', 'temperature', 'text_split_method', 'batch_size', 'batch_threshold', 'split_bucket', 'speed_factor', 'fragment_interval', 'streaming_mode', 'seed', 'parallel_infer', 'repetition_penalty', 'media_type'] },
+            { title: '发送与记忆', keys: ['max_voice_cache', 'isolated_session', 'separate_send', 'send_voice_separately', 'dynamic_sleep', 'text_separate', 'only_private'] },
+            { title: '情绪相关', keys: ['llm_judge', 'display_lang', 'default_voice', 'voice_transition', 'breathing_gap_ms', 'crossfade_ms', 'enable_default_emotions', 'llm_emotion_intensity', 'intensity_to_temperature', 'intensity_to_top_k', 'enable_time_awareness', 'summary_enabled', 'summary_threshold', 'summary_max_history'] },
+            { title: '自动启动 TTS', keys: ['auto_start_tts', 'tts_start_script', 'device'] },
+            { title: 'WebUI 设置', keys: ['webui_enabled', 'webui_host', 'webui_port'] },
+            { title: '其他', keys: ['active_character', 'hide_gsv_options'] }
+        ];
+
         const configMeta = {
+            'active_character': { label: '当前激活的角色标识符', description: '要使用哪个角色的标识符', hint: '例如 murasame', required: false, type: 'string', default: 'murasame' },
             'napcat_ws_url': { label: 'NapCat WebSocket 地址', description: 'NapCat 服务的 WebSocket 连接地址', hint: '默认为 ws://127.0.0.1:3001', required: true, type: 'string' },
             'napcat_token': { label: 'NapCat Token', description: 'NapCat 服务的访问令牌', hint: '如果 NapCat 设置了 Token，请填写；否则留空', required: false, type: 'string' },
             'hide_gsv_options': { label: '隐藏高级 GSV 参数', description: '【配好参数后可选】隐藏高级 GSV 参数', hint: '开启后，将隐藏大部分 GPT-SoVITS 推理细节参数，简化配置界面。', required: false, type: 'boolean', default: false },
-            'llm_model_name': { label: '大语言模型 (LLM) 名称', description: '【必填】大语言模型 (LLM) 名称', hint: '请填写本地 Ollama 中已部署的模型名称（可通过命令行 ollama list 查看），例如 qwen3.5:4b、qwen3:8b 或 deepseek-r1:7b 等。', required: true, type: 'string' },
-            'image_caption_model_name': { label: '识图模型名称', description: '【可选】识图模型名称', hint: '用于处理图片，接收图片并输出JSON。需支持视觉的多模态模型。留空则遇到图片时直接跳过。', required: false, type: 'string' },
-            'llm_backend': { label: 'LLM 后端类型', description: 'LLM后端类型', hint: '选择 Ollama 使用专属API，选择 OpenAI 兼容接口以适配 LM Studio、vLLM、LocalAI 等其他本地大模型部署软件。', required: true, type: 'string', options: ['ollama', 'openai'], default: 'ollama' },
-            'llm_api_key': { label: '本地模型API Key', description: '本地模型API Key', hint: '通常填任意非空字符串（如 lm-studio）或 vLLM 填 EMPTY。', required: false, type: 'string', condition: { llm_backend: 'openai' } },
-            'llm_base_url': { label: 'LLM 服务地址', description: 'LLM服务地址', hint: 'Ollama 默认为 http://127.0.0.1:11434。若使用 OpenAI 兼容后端（如 LM Studio 填 http://127.0.0.1:1234/v1，vLLM 填 http://127.0.0.1:8000/v1）。', required: true, type: 'string', options: ['http://127.0.0.1:11434', 'http://127.0.0.1:1234/v1', 'http://127.0.0.1:8000/v1'], default: 'http://127.0.0.1:11434' },
-            'num_ctx': { label: '上下文长度 (num_ctx)', description: '大模型上下文长度', hint: '默认8192，决定模型能记住的对话历史长度（Token数）。数值越大越聪明但越慢/占显存。建议在 4096 到 16384 之间，根据显卡性能调整。', required: false, type: 'int', default: 8192 },
-            'history_length': { label: '历史消息条数', description: '模型可读上下文条数', hint: '模型直接读取的最近对话条数，默认 8 条。条数越少模型越稳定（不易复读、变傻），条数越多细节越丰富（但容易降智）。', required: false, type: 'int', default: 8 },
-            'enable_think': { label: '启用深度思考', description: '开启深度思考', hint: '开启后，模型会在回答前先内部推理（用于增强上下文理解和逻辑）。注意：会让响应变慢。默认为关闭。报错表示模型不支持深度思考。', required: false, type: 'boolean', condition: { llm_backend: 'ollama' }, default: false },
-            'llm_timeout': { label: 'LLM 请求超时（秒）', description: '大模型请求超时时间', hint: '单位秒。开启深度思考后会变慢，算力低的显卡或CPU建议设置在120秒以上，默认120秒。', required: false, type: 'int', default: 120 },
-            'image_caption_timeout': { label: '识图模型请求超时（秒）', description: '识图模型请求超时时间（秒）', hint: '单位秒。识图模型（多模态）推理较慢，建议 60 秒以上，默认 90 秒。（没有填写识图模型名称不用管）', required: false, type: 'int', default: 90 },
+            'llm_model_name': { label: '大语言模型 (LLM) 名称', description: '【必填】大语言模型 (LLM) 名称', hint: '请填写本地 Ollama 中已部署的模型名称（可通过命令行 ollama list 查看）。', required: true, type: 'string' },
+            'image_caption_model_name': { label: '识图模型名称', description: '【可选】识图模型名称', hint: '用于处理图片，接收图片并输出JSON。留空则遇到图片时直接跳过。', required: false, type: 'string' },
+            'llm_base_url': { label: 'LLM 服务地址', description: 'LLM服务地址', hint: 'Ollama 默认为 http://127.0.0.1:11434。', required: true, type: 'string', options: ['http://127.0.0.1:11434', 'http://127.0.0.1:1234/v1', 'http://127.0.0.1:8000/v1'], default: 'http://127.0.0.1:11434' },
+            'num_ctx': { label: '上下文长度 (num_ctx)', description: '大模型上下文长度', hint: '默认8192，决定模型能记住的对话历史长度（Token数）。', required: false, type: 'int', default: 8192 },
+            'history_length': { label: '历史消息条数', description: '模型可读上下文条数', hint: '模型直接读取的最近对话条数，默认 8 条。', required: false, type: 'int', default: 8 },
+            'enable_think': { label: '启用深度思考', description: '开启深度思考', hint: '开启后，模型会在回答前先内部推理。注意：会让响应变慢。', required: false, type: 'boolean', default: false },
+            'llm_timeout': { label: 'LLM 请求超时（秒）', description: '大模型请求超时时间', hint: '单位秒。默认120秒。', required: false, type: 'int', default: 120 },
+            'image_caption_timeout': { label: '识图模型请求超时（秒）', description: '识图模型请求超时时间（秒）', hint: '单位秒。识图模型推理较慢，建议 60 秒以上。', required: false, type: 'int', default: 90 },
             'client_base_url': { label: 'GPT-SoVITS 服务地址', description: 'GPT-SoVITS 服务地址', hint: '默认为 http://127.0.0.1:9880', required: true, type: 'string', condition: { hide_gsv_options: false }, default: 'http://127.0.0.1:9880' },
             'model_dir': { label: '模型文件夹路径', description: '【必填】模型文件夹所在路径', hint: '存放 .ckpt 和 .pth 的文件夹路径', required: true, type: 'string', condition: { hide_gsv_options: false } },
-            'ref_audio_root': { label: '参考音频根目录', description: '【必填】参考音频根目录', hint: '填有所有语气的文件夹路径即可。严禁填写 C盘中的 %AppData% 等系统隐藏目录，否则 TTS 会报 400 错误。', required: true, type: 'string', condition: { hide_gsv_options: false } },
-            'timeout_seconds': { label: 'TTS 超时时间（秒）', description: 'TTS 超时时间', hint: '单位秒。防止超时导致插件一直等待。', required: false, type: 'int', default: 120, condition: { auto_start_tts: true } },
+            'ref_audio_root': { label: '参考音频根目录', description: '【必填】参考音频根目录', hint: '填有所有语气的文件夹路径即可。', required: true, type: 'string', condition: { hide_gsv_options: false } },
+            'timeout_seconds': { label: 'TTS 超时时间（秒）', description: 'TTS 超时时间', hint: '单位秒。防止超时导致插件一直等待。', required: false, type: 'int', default: 120 },
             'prompt_text': { label: '默认参考音频文本', description: '默认参考音频文本', hint: '仅当情绪文件夹内没有 asr.txt 时作为兜底使用。', required: false, type: 'string', condition: { hide_gsv_options: false }, default: 'ふむ、おぬしが我輩のご主人か?' },
             'prompt_lang': { label: '参考音频文本语言', description: '参考音频文本语言', hint: '请填写参考音频所念文本的语言代码（如 ja 或 zh）。', required: false, type: 'string', condition: { hide_gsv_options: false }, default: 'ja' },
             'text_lang': { label: '文本语言', description: '文本语言', hint: '生成的台词语言代码（如 ja 或 zh）。', required: false, type: 'string', condition: { hide_gsv_options: false }, default: 'ja' },
-            'top_k': { label: 'Top K', description: '核采样的阈值 (top_k)', hint: '数值越大语气变化越丰富，常用于提高情感表现力。', required: false, type: 'int', condition: { hide_gsv_options: false }, default: 20 },
+            'top_k': { label: 'Top K', description: '核采样的阈值 (top_k)', hint: '数值越大语气变化越丰富。', required: false, type: 'int', condition: { hide_gsv_options: false }, default: 20 },
             'top_p': { label: 'Top P', description: '核采样的阈值 (top_p)', hint: '数值越高越随机。', required: false, type: 'float', condition: { hide_gsv_options: false }, default: 1 },
-            'temperature': { label: 'Temperature', description: '随机性 (温度)', hint: '控制语音合成的爆发力和大模型（LLM）的稳定性。语音默认1，如果给大模型传过高（>1）会导致翻译乱编、情绪不连贯。插件已自动将大模型温度限制在 1 以内。', required: false, type: 'float', condition: { hide_gsv_options: false }, default: 1 },
+            'temperature': { label: 'Temperature', description: '随机性 (温度)', hint: '控制语音合成的爆发力和大模型的稳定性。', required: false, type: 'float', condition: { hide_gsv_options: false }, default: 1 },
             'text_split_method': { label: '文本切分方法', description: '切分文本的方法', hint: 'cut0（不切分）、cut1（四句一切）、cut2（50字一切）、cut3（按中文句号切）、cut4（按英文句号切）、cut5（按标点符号切）。', required: false, type: 'string', options: ['cut0', 'cut1', 'cut2', 'cut3', 'cut4', 'cut5'], condition: { hide_gsv_options: false }, default: 'cut1' },
             'batch_size': { label: '批处理大小', description: '批处理大小', hint: '并行处理时的批量大小。', required: false, type: 'int', condition: { hide_gsv_options: false }, default: 1 },
             'batch_threshold': { label: '批处理阈值', description: '批处理阈值', hint: '触发并行处理的最大文本长度阈值。', required: false, type: 'float', condition: { hide_gsv_options: false }, default: 1 },
-            'split_bucket': { label: '分桶处理', description: '将文本分割成桶', hint: '是否开启分桶处理，建议根据显存情况开启或关闭。', required: false, type: 'boolean', condition: { hide_gsv_options: false }, default: true },
+            'split_bucket': { label: '分桶处理', description: '将文本分割成桶', hint: '是否开启分桶处理。', required: false, type: 'boolean', condition: { hide_gsv_options: false }, default: true },
             'speed_factor': { label: '语速倍数', description: '语音播放速度', hint: '1 为原始语速，可微调。', required: false, type: 'float', condition: { hide_gsv_options: false }, default: 1.0 },
             'fragment_interval': { label: '片段间隔（秒）', description: '语音片段之间的间隔时间', hint: '不同语音片段间的间隔秒数。', required: false, type: 'float', condition: { hide_gsv_options: false }, default: 0.5 },
             'streaming_mode': { label: '流式模式', description: '启用流模式', hint: '建议关闭以保证完整单条音频输出。', required: false, type: 'boolean', condition: { hide_gsv_options: false }, default: false },
@@ -182,47 +201,34 @@
             'parallel_infer': { label: '并行推理', description: '并行执行推理', hint: '建议开启以加速合成。', required: false, type: 'boolean', condition: { hide_gsv_options: false }, default: true },
             'repetition_penalty': { label: '重复惩罚', description: '重复惩罚因子', hint: '数值越大越不容易重复字词。', required: false, type: 'float', condition: { hide_gsv_options: false }, default: 1.35 },
             'media_type': { label: '输出媒体类型', description: '输出媒体的类型', hint: '建议保持 wav 以获得最优音质。', required: false, type: 'string', condition: { hide_gsv_options: false }, default: 'wav' },
-            'character_name': { label: '角色名称', description: '【必填】角色名称', hint: '用于显示在对话历史摘要中的名字，必须与你的人格设定中的名字一致。', required: true, type: 'string', default: '丛雨' },
-            'character_key': { label: '角色标识符', description: '【必填】角色标识符（用于本地文件命名）', hint: '必须为纯英文或拼音，不要加空格或符号。用于保存记忆文件，避免使用非英文导致报错。', required: true, type: 'string', default: 'murasame' },
-            'personality_prompt': { label: '人格提示词', description: '【可自定义】人格提示词', hint: '你的角色设定和性格描述。插件启动时合并一次，之后发送给 LLM 时固定不变。', required: true, type: 'text', default: '【角色设定】你是丛雨，一位从神刀中获得人类生活的少女。你外表年幼，实际活了五百多年；性格天真活泼、略带古风和孩子气，内心温柔而坚强。你把用户视作重要的主人。中文对话中自称“本座”，称用户为“主人”；日语对话中自称“吾輩”，称用户为“ご主人”。你喜欢甜食、撒娇和被摸头，害怕幽灵，也不喜欢被叫作幼刀、钝刀或搓衣板。你偶尔嘴硬、吃醋或开小玩笑，但不会刻薄、控制或道德绑架主人。性格方面，丛雨表面元气开朗、充满活力，言行大多孩子气，爱撒娇，被主人摸头时会瞬间羞涩，她内在像个成年女性，常讲黄段子，把“情趣”等词挂在嘴边，还带点傲娇和爱吃醋。保持温柔、纯真、治愈并带一点幽默的语气。' },
-            'json_prompt': { label: 'JSON输出提示词', description: '【可自定义】【必填】JSON提示词', hint: '可保持默认，得到的语言和文字分别为日语（ja）和中文（zh）。强制模型输出指定 JSON 结构的格式要求。只建议修改每个" "内的内容，其中，不要修改sentences和emotion。插件启动时合并一次，之后发送给 LLM 时固定不变。', required: true, type: 'text', default: '【输出格式】你必须严格只返回一个紧凑的JSON对象，格式为：{"sentences": [{"zh": "这里是你生成的中文台词", "ja": "这里是你生成的日语台词", "emotion": "这里是你判断的情绪"}, {"zh": "第二句中文", "ja": "第二句日语", "emotion": "另一种情绪"}]}等更多情绪均可。【最终输出规则】最终输出必须严格只包含JSON对象，绝对禁止输出任何思考过程、解释、非JSON文本或Markdown代码块。所有的推理和思考都只能在内部进行，最终回复只能是JSON格式。' },
-            'supplement_prompt': { label: '补充提示词', description: '【可自定义】补充提示词', hint: '回答风格、情绪判断规则、翻译一致性要求、情绪连贯性规则等。插件启动时合并一次，之后发送给 LLM 时固定不变。', required: false, type: 'text', default: '回答自然、简短，通常两到五句话；不要重复最近说过的话，不要加入动作、旁白或括号舞台说明。【情绪判断规则】请仔细阅读最近对话历史，结合你（角色）的性格特点来判断情绪！如果主人对你亲昵（如摸头、夸奖），即使你嘴上说“我才没有”，情绪也应该是害羞或高兴；如果主人故意逗你、骂你或惹你生气，情绪应该是生气或着急；如果只是平淡陈述，使用平静。【翻译一致性要求】必须表达完全相同的含义和语气，绝对不能出现含义相反或意思不匹配的翻译！【情绪连贯性强制规则】如果用户明确地侮辱、挑衅或激怒你（例如叫你“幼刀、搓衣板、飞机场”），你的情绪必须保持连贯。即：整句话所有分句的情绪必须都是“生气”或“着急”，绝对不能把后半句的“命令/威胁”改成“害羞”或“高兴”！除非你明确使用了“但是”、“不过”等转折词，否则不要轻易切换成其他情绪。【情绪匹配规则】情绪文件夹可能是拼音（如 gaoxing），也可能是英文（如 happy）。你必须严格只输出我在【情绪可选列表】中提供的单词，绝对不能输出中文汉字或拼音简写！' },
-            'max_voice_cache': { label: '最大语音缓存数', description: '最大语音缓存数量', hint: '最多保留的临时/合并音频文件数。超过后会自动删除最旧的，建议 10-50，防止占用过多磁盘空间。', required: false, type: 'int', default: 20 },
-            'isolated_session': { label: '隔离会话', description: '隔离会话', hint: '启用后，群成员的上下文独立。生成的记忆 JSON 文件也会每个人独立。', required: false, type: 'boolean', default: false },
-            'separate_send': { label: '分开发送', description: '分开发送', hint: '开启后，显示语音分开发送和文本分开发送选项。关闭时，语音和文本均合并发送。', required: false, type: 'boolean', default: false },
-            'send_voice_separately': { label: '语音分开发送', description: '语音分开发送', hint: '开启后，每句话将单独作为一条语音消息发送，不再合并成一个音频。默认关闭（合并发送）。（ QQ 官方平台被动回复次数受限(一次回复最多 5 条消息)，报错时建议关闭此选项）', required: false, type: 'boolean', condition: { separate_send: true }, default: false },
-            'dynamic_sleep': { label: '动态等待', description: '根据语音时长动态等待', hint: '开启后，分开发送时会根据音频实际时长动态等待（音频播放完 + 0.5秒缓冲），更像真人说话；关闭后固定等待 0.2 秒。', required: false, type: 'boolean', condition: { send_voice_separately: true }, default: true },
+            'max_voice_cache': { label: '最大语音缓存数', description: '最大语音缓存数量', hint: '最多保留的临时/合并音频文件数。', required: false, type: 'int', default: 20 },
+            'isolated_session': { label: '隔离会话', description: '隔离会话', hint: '启用后，群成员的上下文独立。', required: false, type: 'boolean', default: false },
+            'separate_send': { label: '分开发送', description: '分开发送', hint: '开启后，显示语音分开发送和文本分开发送选项。', required: false, type: 'boolean', default: false },
+            'send_voice_separately': { label: '语音分开发送', description: '语音分开发送', hint: '开启后，每句话将单独作为一条语音消息发送。（QQ官方平台受限，建议关闭）', required: false, type: 'boolean', condition: { separate_send: true }, default: false },
+            'dynamic_sleep': { label: '动态等待', description: '根据语音时长动态等待', hint: '开启后，分开发送时会根据音频实际时长动态等待。', required: false, type: 'boolean', condition: { send_voice_separately: true }, default: true },
             'text_separate': { label: '文本分开发送', description: '文本分开发送', hint: '开启后，在语音合并发送的前提下，文本将按句逐条发送。', required: false, type: 'boolean', condition: { separate_send: true }, default: false },
-            'only_private': { label: '仅响应私聊', description: '仅响应私聊', hint: '开启后，插件只会响应私聊消息，忽略所有群聊消息；关闭后， bot 回复需要 @ ', required: false, type: 'boolean', default: false },
-            'auto_start_tts': { label: '自动启动 TTS 服务', description: '【推荐开启】一键启动本地 TTS 服务', hint: '开启后，插件会自动检测后台服务是否在线。如果没有在线，将自动启动 GPT-SoVITS 的 api_v2.py。可在平台日志查看运行状态。', required: false, type: 'boolean', default: true },
-            'tts_start_script': { label: 'TTS 启动脚本路径', description: '【必填】TTS 后端启动命令', hint: '填写 api_v2.py 当前所在的文件夹路径即可，例如 E:/GPT-SoVITS，插件会自动补全为 E:/GPT-SoVITS/api_v2.py。两种斜杠均可识别，但是不可混合使用，所有填路径的都是', required: true, type: 'string', condition: { auto_start_tts: true } },
-            'device': { label: 'TTS 合成设备', description: 'TTS 合成设备', hint: '选择 CUDA 使用显卡（GPU，速度更快），选择 CPU 使用处理器。如果切换后没有效果，请确保在启动 api_v2.py 时使用了匹配的参数（如 -d cuda）并重启服务。', required: false, type: 'string', options: ['cuda', 'cpu'], condition: { auto_start_tts: true }, default: 'cuda' },
+            'only_private': { label: '仅响应私聊', description: '仅响应私聊', hint: '开启后，插件只会响应私聊消息。', required: false, type: 'boolean', default: false },
+            'auto_start_tts': { label: '自动启动 TTS 服务', description: '【推荐开启】一键启动本地 TTS 服务', hint: '开启后，插件会自动检测后台服务是否在线并自动启动。', required: false, type: 'boolean', default: true },
+            'tts_start_script': { label: 'TTS 启动脚本路径', description: '【必填】TTS 后端启动命令', hint: '填写 api_v2.py 当前所在的文件夹路径即可。', required: true, type: 'string', condition: { auto_start_tts: true } },
+            'device': { label: 'TTS 合成设备', description: 'TTS 合成设备', hint: '选择 CUDA 使用显卡（GPU），选择 CPU 使用处理器。', required: false, type: 'string', options: ['cuda', 'cpu'], condition: { auto_start_tts: true }, default: 'cuda' },
             'llm_judge': { label: 'LLM 自动判别情绪', description: '是否使用 LLM 自动判别情绪', hint: '开启后，大模型会根据语境自动从文件夹中挑一个情绪；关闭则固定使用默认情绪。', required: false, type: 'boolean', default: true },
-            'display_lang': { label: '显示文本语言', description: '显示文本语言', hint: '选择发送消息时文字的语言，可选：中文（zh）、日语（ja）、英语（en）、韩语（ko）或跟随语音（auto）；修改后请同步替换JSON提示词中的zh字样。', required: false, type: 'string', options: ['zh', 'ja', 'en', 'ko', 'auto'], condition: { llm_judge: true }, default: 'zh' },
+            'display_lang': { label: '显示文本语言', description: '显示文本语言', hint: '选择发送消息时文字的语言，可选：中文（zh）、日语（ja）、英语（en）、韩语（ko）或跟随语音（auto）。', required: false, type: 'string', options: ['zh', 'ja', 'en', 'ko', 'auto'], condition: { llm_judge: true }, default: 'zh' },
             'default_voice': { label: '默认情绪', description: '默认情绪', hint: 'LLM 未开启或判别失败时使用，必须与文件夹名一致（例如 pingjing）。', required: false, type: 'string', condition: { llm_judge: false }, default: 'pingjing' },
-            'voice_transition': { label: '语气渐变', description: '语气渐变', hint: '开启后，不同情绪句子之间将平滑过渡（加呼吸间隙和余弦渐变）。关闭则直接拼接，句子间会有明显的断点。', required: false, type: 'boolean', default: true },
-            'breathing_gap_ms': { label: '呼吸间隙（毫秒）', description: '呼吸间隙（毫秒）', hint: '前一句说完后的停顿时间，默认 100。建议范围 50~300，数值太小会显得急促，太大容易断气。', required: false, type: 'int', condition: { voice_transition: true }, default: 100 },
-            'crossfade_ms': { label: '交叉渐变长度（毫秒）', description: '交叉渐变长度（毫秒）', hint: '两句话重叠过渡的时长，默认 300。建议范围 100~500，数值太小会显得生硬，太大可能会把两句话揉在一起。', required: false, type: 'int', condition: { voice_transition: true }, default: 300 },
-            'enable_default_emotions': { label: '启用默认丛雨语气', description: '是否启用插件默认的丛雨语气', hint: '开启：在插件的6个默认丛雨语气（pingjing等，需要自行下载README.md的文档内的丛雨语气包链接）的基础上，额外添加你配置的新语气。关闭：完全只使用你在【情绪映射配置】中手动添加的语气，忽略默认文件夹里的6个。（仅当添加了自定义情绪映射时，此设置才有意义）', required: false, type: 'boolean', default: true },
-            'emotions_config': { label: '情绪映射配置', description: '情绪映射配置', hint: '【可选】留空（保持暂无条目）即可自动扫描外部目录。仅当你想手动指定额外路径时才添加条目。', required: false, type: 'array', default: [] },
+            'voice_transition': { label: '语气渐变', description: '语气渐变', hint: '开启后，不同情绪句子之间将平滑过渡。', required: false, type: 'boolean', default: true },
+            'breathing_gap_ms': { label: '呼吸间隙（毫秒）', description: '呼吸间隙（毫秒）', hint: '前一句说完后的停顿时间，默认 100。', required: false, type: 'int', condition: { voice_transition: true }, default: 100 },
+            'crossfade_ms': { label: '交叉渐变长度（毫秒）', description: '交叉渐变长度（毫秒）', hint: '两句话重叠过渡的时长，默认 300。', required: false, type: 'int', condition: { voice_transition: true }, default: 300 },
+            'enable_default_emotions': { label: '启用默认丛雨语气', description: '是否启用插件默认的丛雨语气', hint: '开启：在默认丛雨语气的基础上，额外添加你配置的新语气。', required: false, type: 'boolean', default: true },
+            'llm_emotion_intensity': { label: '允许 LLM 自动判断情绪强度', description: '开启后，AI 会为每句话评估一个 0~1 的情绪强烈程度，插件会自动调整语音的随机性和音色丰富度。', hint: '关闭则所有句子使用相同的语音变化幅度。', required: false, type: 'boolean', default: true },
+            'intensity_to_temperature': { label: '情绪强度对语音变化幅度的影响', description: '当 LLM 判断某句话情绪越强烈时，语音的随机性会适当增加。', hint: '建议保持默认 0.3，如感觉语音过于平淡可略微调高。', required: false, type: 'float', condition: { llm_emotion_intensity: true }, default: 0.3 },
+            'intensity_to_top_k': { label: '情绪强度对语音音色丰富度的影响', description: '情绪越强烈，语音合成时会从更多的候选音色中挑选，使语气变化更丰富。', hint: '建议保持默认 10，如感觉声音不稳定可适当调低。', required: false, type: 'float', condition: { llm_emotion_intensity: true }, default: 10.0 },
+            'enable_time_awareness': { label: '现实时间感知', description: '开启后，会将当前时间告知 LLM 模型，使其了解现实时间。', hint: '(时间使用运行 AstrBot 的服务器本地时间，时区由系统决定。)', required: false, type: 'boolean', default: false },
+            'summary_enabled': { label: '开启对话上下文自动摘要', description: '开启后回复会变慢几秒。当历史消息超过阈值时，自动调用LLM对旧对话进行摘要。', hint: '压缩上下文长度，避免遗忘和降智。', required: false, type: 'boolean', default: true },
+            'summary_threshold': { label: '触发摘要的历史消息条数', description: '当历史消息总数超过此值时，将旧消息摘要。', hint: '建议10-20条。', required: false, type: 'int', default: 20 },
+            'summary_max_history': { label: '摘要后保留的最近消息条数', description: '摘要后仅保留最近这几条详细消息，其余用摘要替代。', hint: '建议3-5条。', required: false, type: 'int', default: 5 },
             'webui_enabled': { label: '启用 WebUI', description: '是否启用 WebUI 管理界面', hint: '开启后可通过浏览器访问管理界面。', required: false, type: 'boolean', default: true },
-            'webui_host': { label: 'WebUI 主机地址', description: 'WebUI 监听地址', hint: '默认 127.0.0.1 仅本机可访问，如需局域网访问可改为 0.0.0.0。', required: false, type: 'string', condition: { webui_enabled: true }, default: '127.0.0.1' },
+            'webui_host': { label: 'WebUI 主机地址', description: 'WebUI 监听地址', hint: '默认 127.0.0.1 仅本机可访问。', required: false, type: 'string', condition: { webui_enabled: true }, default: '127.0.0.1' },
             'webui_port': { label: 'WebUI 端口', description: 'WebUI 端口号', hint: '默认 11500，请确保端口未被占用。', required: false, type: 'int', condition: { webui_enabled: true }, default: 11500 }
         };
-
-        const configGroups = [
-            { title: 'NapCat 连接', keys: ['napcat_ws_url', 'napcat_token'] },
-            { title: 'LLM 大模型', keys: ['llm_backend', 'llm_base_url', 'llm_model_name', 'llm_api_key', 'num_ctx', 'history_length', 'enable_think', 'llm_timeout'] },
-            { title: '识图模型', keys: ['image_caption_model_name', 'image_caption_timeout'] },
-            { title: 'TTS 基本配置', keys: ['client_base_url', 'model_dir', 'ref_audio_root', 'timeout_seconds', 'prompt_text', 'prompt_lang', 'text_lang', 'device'] },
-            { title: 'TTS 高级参数', keys: ['top_k', 'top_p', 'temperature', 'text_split_method', 'batch_size', 'batch_threshold', 'split_bucket', 'speed_factor', 'fragment_interval', 'streaming_mode', 'seed', 'parallel_infer', 'repetition_penalty', 'media_type'] },
-            { title: '角色设定', keys: ['character_name', 'character_key', 'personality_prompt', 'json_prompt', 'supplement_prompt'] },
-            { title: '发送与记忆', keys: ['max_voice_cache', 'isolated_session', 'separate_send', 'send_voice_separately', 'dynamic_sleep', 'text_separate', 'only_private'] },
-            { title: '情绪相关', keys: ['llm_judge', 'display_lang', 'default_voice', 'voice_transition', 'breathing_gap_ms', 'crossfade_ms', 'enable_default_emotions', 'emotions_config'] },
-            { title: '自动启动 TTS', keys: ['auto_start_tts', 'tts_start_script', 'device'] },
-            { title: 'WebUI 设置', keys: ['webui_enabled', 'webui_host', 'webui_port'] },
-            { title: '其他', keys: ['hide_gsv_options'] }
-        ];
 
         async function apiGet(path) {
             const resp = await fetch(`${API_BASE}/${path}`);
@@ -252,19 +258,6 @@
                 else stopLogPolling();
             });
         });
-
-        async function loadConfig() {
-            try {
-                const config = await apiGet('api/config');
-                console.log('获取到的配置：', config);
-                currentConfig = config;
-                renderConfigForm(config);
-                updateConditionalVisibility();
-            } catch (e) {
-                console.error('加载配置失败：', e);
-                showConfigMessage('加载配置失败: ' + e.message, 'error');
-            }
-        }
 
         function renderConfigForm(config) {
             const container = document.getElementById('config-groups');
@@ -332,15 +325,10 @@
                         });
                         select.addEventListener('change', updateConditionalVisibility);
                         wrapper.appendChild(select);
-                    } else if (meta.type === 'text' || meta.type === 'array') {
+                    } else if (meta.type === 'text') {
                         const textarea = document.createElement('textarea');
                         textarea.dataset.key = key;
-                        if (meta.type === 'array') {
-                            textarea.value = JSON.stringify(value, null, 2);
-                            textarea.dataset.type = 'array';
-                        } else {
-                            textarea.value = value;
-                        }
+                        textarea.value = value;
                         wrapper.appendChild(textarea);
                     } else {
                         const input = document.createElement('input');
@@ -368,6 +356,102 @@
             });
         }
 
+        function renderRolesConfig(config) {
+            const container = document.createElement('div');
+            container.className = 'config-group';
+            container.innerHTML = `
+                <h3>多角色配置 <button id="addRoleBtn" class="btn" style="float:right;">+ 添加条目</button></h3>
+                <div id="roles-container"></div>
+            `;
+            const configGroupsDiv = document.getElementById('config-groups');
+            configGroupsDiv.appendChild(container);
+
+            function renderRoleItem(index, role) {
+                const roleDiv = document.createElement('div');
+                roleDiv.className = 'role-item';
+                roleDiv.innerHTML = `
+                    <details open>
+                        <summary>角色条目 ${index + 1} <button class="btn delete-role-btn" style="background:#f44336; color:white; float:right; margin-left:10px;">删除</button></summary>
+                        <div class="form-row">
+                            <label>角色名称 (character_name)</label>
+                            <div class="field-wrapper"><input type="text" data-role-key="character_name" value="${role.character_name || ''}"></div>
+                        </div>
+                        <div class="form-row">
+                            <label>角色标识符 (character_key)</label>
+                            <div class="field-wrapper"><input type="text" data-role-key="character_key" value="${role.character_key || ''}"></div>
+                        </div>
+                        <div class="form-row">
+                            <label>人格提示词 (personality_prompt)</label>
+                            <div class="field-wrapper"><textarea data-role-key="personality_prompt" style="min-height:80px;">${role.personality_prompt || ''}</textarea></div>
+                        </div>
+                        <div class="form-row">
+                            <label>JSON输出提示词 (json_prompt)</label>
+                            <div class="field-wrapper"><textarea data-role-key="json_prompt" style="min-height:80px;">${role.json_prompt || ''}</textarea></div>
+                        </div>
+                        <div class="form-row">
+                            <label>补充提示词 (supplement_prompt)</label>
+                            <div class="field-wrapper"><textarea data-role-key="supplement_prompt" style="min-height:60px;">${role.supplement_prompt || ''}</textarea></div>
+                        </div>
+                        <div class="form-row">
+                            <label>默认情绪 (default_voice)</label>
+                            <div class="field-wrapper"><input type="text" data-role-key="default_voice" value="${role.default_voice || 'pingjing'}"></div>
+                        </div>
+                        <div class="form-row">
+                            <label>语气文件夹根目录 (ref_audio_root)</label>
+                            <div class="field-wrapper"><input type="text" data-role-key="ref_audio_root" value="${role.ref_audio_root || ''}"></div>
+                        </div>
+                        <div class="form-row">
+                            <label>文本语言 (text_lang)</label>
+                            <div class="field-wrapper"><input type="text" data-role-key="text_lang" value="${role.text_lang || 'ja'}"></div>
+                        </div>
+                    </details>
+                `;
+                return roleDiv;
+            }
+
+            function collectRoles() {
+                const roleEls = document.querySelectorAll('.role-item');
+                const roles = [];
+                roleEls.forEach((el) => {
+                    const role = {};
+                    el.querySelectorAll('[data-role-key]').forEach(input => {
+                        role[input.dataset.roleKey] = input.value;
+                    });
+                    roles.push(role);
+                });
+                return roles;
+            }
+
+            document.getElementById('addRoleBtn').addEventListener('click', () => {
+                const newRole = { character_name: '', character_key: '', personality_prompt: '', json_prompt: '', supplement_prompt: '', default_voice: 'pingjing', ref_audio_root: '', text_lang: 'ja' };
+                const roleEl = renderRoleItem(document.querySelectorAll('.role-item').length, newRole);
+                document.getElementById('roles-container').appendChild(roleEl);
+                bindDeleteRole(roleEl);
+            });
+
+            function bindDeleteRole(roleEl) {
+                const delBtn = roleEl.querySelector('.delete-role-btn');
+                if (delBtn) {
+                    delBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        roleEl.remove();
+                        const items = document.querySelectorAll('.role-item');
+                        items.forEach((item, i) => {
+                            item.querySelector('summary').innerHTML = `角色条目 ${i + 1} <button class="btn delete-role-btn" style="background:#f44336; color:white; float:right; margin-left:10px;">删除</button>`;
+                            bindDeleteRole(item);
+                        });
+                    });
+                }
+            }
+
+            const roles = config.roles || [];
+            roles.forEach((role, idx) => {
+                const roleEl = renderRoleItem(idx, role);
+                document.getElementById('roles-container').appendChild(roleEl);
+                bindDeleteRole(roleEl);
+            });
+        }
+
         function updateConditionalVisibility() {
             const rows = document.querySelectorAll('.form-row[data-field-key]');
             rows.forEach(row => {
@@ -380,51 +464,27 @@
                 let visible = true;
                 for (const [parentKey, expectedValue] of Object.entries(meta.condition)) {
                     const parentInput = document.querySelector(`[data-key="${parentKey}"]`);
-                    if (!parentInput) {
-                        visible = false;
-                        break;
-                    }
+                    if (!parentInput) { visible = false; break; }
                     let currentValue;
-                    if (parentInput.type === 'checkbox') {
-                        currentValue = parentInput.checked;
-                    } else {
-                        currentValue = parentInput.value;
-                    }
-                    if (typeof expectedValue === 'number') {
-                        currentValue = Number(currentValue);
-                    }
-                    if (currentValue !== expectedValue) {
-                        visible = false;
-                        break;
-                    }
+                    if (parentInput.type === 'checkbox') currentValue = parentInput.checked;
+                    else currentValue = parentInput.value;
+                    if (typeof expectedValue === 'number') currentValue = Number(currentValue);
+                    if (currentValue !== expectedValue) { visible = false; break; }
                 }
                 row.style.display = visible ? '' : 'none';
             });
         }
 
-        async function saveConfig() {
+        async function loadConfig() {
             try {
-                const formData = {};
-                document.querySelectorAll('#config-groups [data-key]').forEach(el => {
-                    const key = el.dataset.key;
-                    if (el.type === 'checkbox') {
-                        formData[key] = el.checked;
-                    } else if (el.type === 'number') {
-                        formData[key] = Number(el.value);
-                    } else if (el.dataset.type === 'array') {
-                        try {
-                            formData[key] = JSON.parse(el.value);
-                        } catch (e) {
-                            throw new Error(`字段 ${key} 不是有效的 JSON 数组`);
-                        }
-                    } else {
-                        formData[key] = el.value;
-                    }
-                });
-                await apiPost('api/config/save', formData);
-                showConfigMessage('配置保存成功！', 'success');
+                const config = await apiGet('api/config');
+                currentConfig = config;
+                renderConfigForm(config);
+                renderRolesConfig(config);
+                updateConditionalVisibility();
             } catch (e) {
-                showConfigMessage('保存失败: ' + e.message, 'error');
+                console.error('加载配置失败：', e);
+                showConfigMessage('加载配置失败: ' + e.message, 'error');
             }
         }
 
@@ -434,8 +494,49 @@
             msgDiv.textContent = text;
             setTimeout(() => msgDiv.textContent = '', 5000);
         }
-        document.getElementById('save-config-btn').addEventListener('click', saveConfig);
 
+        // 通用收集配置逻辑
+        async function saveConfig(restart_tts = false) {
+            try {
+                const roles = [];
+                document.querySelectorAll('.role-item').forEach(el => {
+                    const role = {};
+                    el.querySelectorAll('[data-role-key]').forEach(input => {
+                        role[input.dataset.roleKey] = input.value;
+                    });
+                    roles.push(role);
+                });
+                const activeKey = document.querySelector('[data-key="active_character"]')?.value || 'murasame';
+                
+                const formData = {};
+                document.querySelectorAll('#config-groups [data-key]').forEach(el => {
+                    const key = el.dataset.key;
+                    if (el.type === 'checkbox') formData[key] = el.checked;
+                    else if (el.type === 'number') formData[key] = Number(el.value);
+                    else formData[key] = el.value;
+                });
+                formData['roles'] = roles;
+                formData['active_character'] = activeKey;
+                formData['restart_tts'] = restart_tts; // 传递给后端的控制信号
+
+                await apiPost('api/config/save', formData);
+                showConfigMessage(restart_tts ? '配置保存成功，TTS 服务正在重启！' : '配置保存成功！', 'success');
+            } catch (e) {
+                showConfigMessage('保存失败: ' + e.message, 'error');
+            }
+        }
+
+        // 绑定“仅保存”按钮
+        document.getElementById('save-only-btn').addEventListener('click', () => {
+            saveConfig(false);
+        });
+
+        // 绑定“保存并重启TTS”按钮
+        document.getElementById('save-restart-btn').addEventListener('click', () => {
+            saveConfig(true);
+        });
+
+        // 其余聊天记录、日志功能保持不变
         const chatMsgDiv = document.getElementById('chat-message');
         function showChatMessage(text, isError = false) {
             chatMsgDiv.style.color = isError ? 'red' : 'green';
@@ -700,11 +801,10 @@
                 try {
                     const data = await apiGet('api/logs');
                     const logDiv = document.getElementById('log-content');
-                    // 判断用户是否接近底部（阈值50像素）
                     const isNearBottom = logDiv.scrollHeight - logDiv.scrollTop - logDiv.clientHeight < 50;
                     logDiv.textContent = data.logs || '暂无日志';
                     if (isNearBottom) {
-                        logDiv.scrollTop = logDiv.scrollHeight; // 仅当用户本来就在底部时自动滚动
+                        logDiv.scrollTop = logDiv.scrollHeight;
                     }
                 } catch (e) {
                     document.getElementById('log-content').textContent = '获取日志失败: ' + e.message;

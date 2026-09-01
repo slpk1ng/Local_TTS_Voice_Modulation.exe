@@ -14,12 +14,16 @@ from typing import Optional, Dict, Any, List
 from urllib.parse import urlparse
 import httpx
 import numpy as np
+import logging
 try:
     import webview
     HAS_WEBVIEW = True
 except ImportError:
     HAS_WEBVIEW = False
     print("警告：未安装 pywebview，将使用浏览器访问。可运行 pip install pywebview 启用。")
+
+logging.basicConfig(filename='app.log', level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 def get_resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
@@ -45,20 +49,39 @@ log_lock = threading.Lock()
 
 class StdoutRedirector:
     def __init__(self, original_stream):
+        # 兼容 console=False 时 sys.stdout 为 None 的情况
+        if original_stream is None:
+            try:
+                original_stream = open(os.devnull, 'w', encoding='utf-8')
+            except Exception:
+                original_stream = None
         self.original_stream = original_stream
         self._last_saved_config = None
+
     def write(self, message):
         if not message:
             return
         with log_lock:
-            self.original_stream.write(message)
+            # 尝试写入原始流，失败则忽略
+            if self.original_stream is not None:
+                try:
+                    self.original_stream.write(message)
+                    self.original_stream.flush()
+                except Exception:
+                    pass  # 无控制台时忽略写入错误
+
+            # 始终保存到日志缓冲区
             for line in message.splitlines(True):
                 global_log_buffer.append(line.rstrip('\n'))
                 if len(global_log_buffer) > 500:
                     global_log_buffer.pop(0)
-        self.original_stream.flush()
+
     def flush(self):
-        self.original_stream.flush()
+        if self.original_stream is not None:
+            try:
+                self.original_stream.flush()
+            except Exception:
+                pass
 
 class ProcessManager:
     _instance = None
@@ -101,6 +124,48 @@ class ConfigLoader:
     def __init__(self, config_path: str = "config.json"):
         self.config_path = Path(config_path)
         self.config = self._load_or_init()
+        # 多角色配置解析
+        self.active_character = self.config.get("active_character", self.config.get("character_key", "murasame"))
+        self.roles = self._parse_roles()
+
+    def _parse_roles(self) -> dict:
+        """解析多角色配置，将旧版单角色配置迁移为角色列表"""
+        roles = {}
+        # 如果已有 roles 配置则直接使用
+        if "roles" in self.config and isinstance(self.config["roles"], list):
+            roles_config = self.config["roles"]
+        else:
+            # 兼容旧版单角色配置，构造一个默认角色
+            roles_config = [{
+                "character_name": self.config.get("character_name", "丛雨"),
+                "character_key": self.config.get("character_key", "murasame"),
+                "personality_prompt": self.config.get("personality_prompt", ""),
+                "json_prompt": self.config.get("json_prompt", ""),
+                "supplement_prompt": self.config.get("supplement_prompt", ""),
+                "default_voice": self.config.get("default_voice", "pingjing"),
+                "ref_audio_root": self.config.get("ref_audio_root", ""),
+                "text_lang": self.config.get("text_lang", "ja")
+            }]
+
+        for role_cfg in roles_config:
+            key = role_cfg.get("character_key", "")
+            if not key:
+                continue
+            roles[key] = {
+                "character_name": role_cfg.get("character_name", "丛雨"),
+                "character_key": key,
+                "personality_prompt": role_cfg.get("personality_prompt", self.config.get("personality_prompt", "")),
+                "json_prompt": role_cfg.get("json_prompt", self.config.get("json_prompt", "")),
+                "supplement_prompt": role_cfg.get("supplement_prompt", self.config.get("supplement_prompt", "")),
+                "default_voice": role_cfg.get("default_voice", "pingjing"),
+                "ref_audio_root": role_cfg.get("ref_audio_root", ""),
+                "text_lang": role_cfg.get("text_lang", "ja")
+            }
+        # 确保默认角色存在
+        if self.active_character not in roles:
+            self.active_character = list(roles.keys())[0] if roles else "murasame"
+        return roles
+
     def _load_or_init(self) -> dict:
         def can_interact():
             try:
@@ -130,6 +195,7 @@ class ConfigLoader:
                 return self._interactive_init(self.default_config())
             else:
                 return self._auto_save_default(self.default_config())
+
     def _auto_save_default(self, base_config: dict) -> dict:
         merged_config = {**self.default_config(), **base_config}
         try:
@@ -139,7 +205,9 @@ class ConfigLoader:
         except Exception as e:
             print(f"自动保存配置失败（请手动创建 config.json）：{e}")
         return merged_config
+
     def _interactive_init(self, base_config: dict) -> dict:
+        # 简化的交互初始化
         print("\n--- 配置向导 ---")
         print("按回车使用默认值，或输入自定义值。")
         print("\n[1] NapCat 连接配置")
@@ -149,312 +217,37 @@ class ConfigLoader:
         token = input(f"Token (默认 {base_config.get('napcat_token')}): ").strip()
         if token:
             base_config["napcat_token"] = token
+
         print("\n[2] 本地大模型 (LLM) 配置")
-        backend = input(f"后端类型 (ollama/openai, 默认 {base_config.get('llm_backend')}): ").strip()
-        if backend.lower() in ("ollama", "openai"):
-            base_config["llm_backend"] = backend.lower()
         base_url = input(f"API 地址 (默认 {base_config.get('llm_base_url')}): ").strip()
         if base_url:
             base_config["llm_base_url"] = base_url
         model = input(f"模型名称 (默认 {base_config.get('llm_model_name')}): ").strip()
         if model:
             base_config["llm_model_name"] = model
-        api_key = input(f"API Key (可选): ").strip()
-        if api_key:
-            base_config["llm_api_key"] = api_key
-        num_ctx = input(f"上下文长度 (默认 {base_config.get('num_ctx')}): ").strip()
-        if num_ctx:
-            try:
-                base_config["num_ctx"] = int(num_ctx)
-            except ValueError:
-                print("无效数字，保持默认。")
-        history_length = input(f"历史消息条数 (默认 {base_config.get('history_length')}): ").strip()
-        if history_length:
-            try:
-                base_config["history_length"] = int(history_length)
-            except ValueError:
-                print("无效数字，保持默认。")
-        enable_think = input(f"启用深度思考 (y/n, 默认 {base_config.get('enable_think')}): ").strip().lower()
-        if enable_think in ("y", "yes", "true"):
-            base_config["enable_think"] = True
-        else:
-            base_config["enable_think"] = False
-        llm_timeout = input(f"LLM 请求超时（秒）(默认 {base_config.get('llm_timeout')}): ").strip()
-        if llm_timeout:
-            try:
-                base_config["llm_timeout"] = int(llm_timeout)
-            except ValueError:
-                print("无效数字，保持默认。")
-        print("\n[3] 识图模型配置（可选）")
-        image_model = input(f"识图模型名称 (默认 {base_config.get('image_caption_model_name')}，留空跳过): ").strip()
-        if image_model:
-            base_config["image_caption_model_name"] = image_model
-        image_timeout = input(f"识图请求超时（秒）(默认 {base_config.get('image_caption_timeout')}): ").strip()
-        if image_timeout:
-            try:
-                base_config["image_caption_timeout"] = int(image_timeout)
-            except ValueError:
-                print("无效数字，保持默认。")
-        print("\n[4] GPT-SoVITS TTS 基本配置")
-        tts_url = input(f"TTS 服务地址 (默认 {base_config.get('client_base_url')}): ").strip()
-        if tts_url:
-            base_config["client_base_url"] = tts_url
-        ref_root = input(f"参考音频根目录 (默认 {base_config.get('ref_audio_root')}): ").strip()
-        if ref_root:
-            base_config["ref_audio_root"] = ref_root.replace("/", "\\").rstrip("\\")
-        model_dir = input(f"模型文件夹路径 (默认 {base_config.get('model_dir')}): ").strip()
-        if model_dir:
-            base_config["model_dir"] = model_dir.replace("/", "\\").rstrip("\\")
-        tts_script = input(f"TTS 启动脚本路径 (默认 {base_config.get('tts_start_script')}): ").strip()
-        if tts_script:
-            base_config["tts_start_script"] = tts_script.replace("/", "\\").rstrip("\\")
-        auto_start = input(f"自动启动 TTS 服务 (y/n, 默认 {base_config.get('auto_start_tts')}): ").strip().lower()
-        if auto_start in ("y", "yes", "true"):
-            base_config["auto_start_tts"] = True
-        else:
-            base_config["auto_start_tts"] = False
-        device = input(f"TTS 合成设备 (cuda/cpu, 默认 {base_config.get('device')}): ").strip()
-        if device.lower() in ("cuda", "cpu"):
-            base_config["device"] = device.lower()
-        print("\n[5] 高级 TTS 参数（建议保持默认）")
-        prompt_text = input(f"默认参考音频文本 (默认 {base_config.get('prompt_text')}): ").strip()
-        if prompt_text:
-            base_config["prompt_text"] = prompt_text
-        prompt_lang = input(f"参考音频语言 (默认 {base_config.get('prompt_lang')}): ").strip()
-        if prompt_lang:
-            base_config["prompt_lang"] = prompt_lang
-        text_lang = input(f"文本语言 (默认 {base_config.get('text_lang')}): ").strip()
-        if text_lang:
-            base_config["text_lang"] = text_lang
-        top_k = input(f"top_k (默认 {base_config.get('top_k')}): ").strip()
-        if top_k:
-            try:
-                base_config["top_k"] = int(top_k)
-            except ValueError:
-                print("无效数字，保持默认。")
-        top_p = input(f"top_p (默认 {base_config.get('top_p')}): ").strip()
-        if top_p:
-            try:
-                base_config["top_p"] = float(top_p)
-            except ValueError:
-                print("无效数字，保持默认。")
-        temperature = input(f"temperature (默认 {base_config.get('temperature')}): ").strip()
-        if temperature:
-            try:
-                base_config["temperature"] = float(temperature)
-            except ValueError:
-                print("无效数字，保持默认。")
-        text_split_method = input(f"文本切分方法 (cut0-cut5, 默认 {base_config.get('text_split_method')}): ").strip()
-        if text_split_method:
-            base_config["text_split_method"] = text_split_method
-        batch_size = input(f"批处理大小 (默认 {base_config.get('batch_size')}): ").strip()
-        if batch_size:
-            try:
-                base_config["batch_size"] = int(batch_size)
-            except ValueError:
-                print("无效数字，保持默认。")
-        batch_threshold = input(f"批处理阈值 (默认 {base_config.get('batch_threshold')}): ").strip()
-        if batch_threshold:
-            try:
-                base_config["batch_threshold"] = float(batch_threshold)
-            except ValueError:
-                print("无效数字，保持默认。")
-        split_bucket = input(f"分桶处理 (y/n, 默认 {base_config.get('split_bucket')}): ").strip().lower()
-        if split_bucket in ("y", "yes", "true"):
-            base_config["split_bucket"] = True
-        else:
-            base_config["split_bucket"] = False
-        speed_factor = input(f"语速 (默认 {base_config.get('speed_factor')}): ").strip()
-        if speed_factor:
-            try:
-                base_config["speed_factor"] = float(speed_factor)
-            except ValueError:
-                print("无效数字，保持默认。")
-        fragment_interval = input(f"片段间隔（秒）(默认 {base_config.get('fragment_interval')}): ").strip()
-        if fragment_interval:
-            try:
-                base_config["fragment_interval"] = float(fragment_interval)
-            except ValueError:
-                print("无效数字，保持默认。")
-        streaming_mode = input(f"流式模式 (y/n, 默认 {base_config.get('streaming_mode')}): ").strip().lower()
-        if streaming_mode in ("y", "yes", "true"):
-            base_config["streaming_mode"] = True
-        else:
-            base_config["streaming_mode"] = False
-        seed = input(f"随机种子 (默认 {base_config.get('seed')}): ").strip()
-        if seed:
-            try:
-                base_config["seed"] = int(seed)
-            except ValueError:
-                print("无效数字，保持默认。")
-        parallel_infer = input(f"并行推理 (y/n, 默认 {base_config.get('parallel_infer')}): ").strip().lower()
-        if parallel_infer in ("y", "yes", "true"):
-            base_config["parallel_infer"] = True
-        else:
-            base_config["parallel_infer"] = False
-        repetition_penalty = input(f"重复惩罚 (默认 {base_config.get('repetition_penalty')}): ").strip()
-        if repetition_penalty:
-            try:
-                base_config["repetition_penalty"] = float(repetition_penalty)
-            except ValueError:
-                print("无效数字，保持默认。")
-        media_type = input(f"媒体类型 (wav/ogg/...，默认 {base_config.get('media_type')}): ").strip()
-        if media_type:
-            base_config["media_type"] = media_type
-        timeout_seconds = input(f"TTS 超时（秒）(默认 {base_config.get('timeout_seconds')}): ").strip()
-        if timeout_seconds:
-            try:
-                base_config["timeout_seconds"] = int(timeout_seconds)
-            except ValueError:
-                print("无效数字，保持默认。")
-        print("\n[6] 角色设定")
+
+        print("\n[3] 角色配置")
         character_name = input(f"角色名称 (默认 {base_config.get('character_name')}): ").strip()
         if character_name:
             base_config["character_name"] = character_name
         character_key = input(f"角色标识符 (默认 {base_config.get('character_key')}): ").strip()
         if character_key:
             base_config["character_key"] = character_key
-        personality = input(f"人格提示词 (默认已有内容，直接回车保持，输入 'custom' 自定义): ").strip()
-        if personality.lower() == "custom":
-            print("请输入人格提示词（可多行，以 END 单独一行结束）：")
-            lines = []
-            while True:
-                line = input()
-                if line == "END":
-                    break
-                lines.append(line)
-            base_config["personality_prompt"] = "\n".join(lines)
-        json_prompt = input(f"JSON输出提示词 (默认已有内容，直接回车保持，输入 'custom' 自定义): ").strip()
-        if json_prompt.lower() == "custom":
-            print("请输入JSON提示词（可多行，以 END 单独一行结束）：")
-            lines = []
-            while True:
-                line = input()
-                if line == "END":
-                    break
-                lines.append(line)
-            base_config["json_prompt"] = "\n".join(lines)
-        supplement = input(f"补充提示词 (默认已有内容，直接回车保持，输入 'custom' 自定义): ").strip()
-        if supplement.lower() == "custom":
-            print("请输入补充提示词（可多行，以 END 单独一行结束）：")
-            lines = []
-            while True:
-                line = input()
-                if line == "END":
-                    break
-                lines.append(line)
-            base_config["supplement_prompt"] = "\n".join(lines)
-        print("\n[7] 发送与记忆设置")
-        max_voice_cache = input(f"最大语音缓存数 (默认 {base_config.get('max_voice_cache')}): ").strip()
-        if max_voice_cache:
-            try:
-                base_config["max_voice_cache"] = int(max_voice_cache)
-            except ValueError:
-                print("无效数字，保持默认。")
-        isolated = input(f"隔离会话 (y/n, 默认 {base_config.get('isolated_session')}): ").strip().lower()
-        if isolated in ("y", "yes", "true"):
-            base_config["isolated_session"] = True
-        else:
-            base_config["isolated_session"] = False
-        separate_send = input(f"分开发送选项 (y/n, 默认 {base_config.get('separate_send')}): ").strip().lower()
-        if separate_send in ("y", "yes", "true"):
-            base_config["separate_send"] = True
-        else:
-            base_config["separate_send"] = False
-        if base_config["separate_send"]:
-            send_voice_sep = input(f"语音分开发送 (y/n, 默认 {base_config.get('send_voice_separately')}): ").strip().lower()
-            if send_voice_sep in ("y", "yes", "true"):
-                base_config["send_voice_separately"] = True
-            else:
-                base_config["send_voice_separately"] = False
-            text_sep = input(f"文本分开发送 (y/n, 默认 {base_config.get('text_separate')}): ").strip().lower()
-            if text_sep in ("y", "yes", "true"):
-                base_config["text_separate"] = True
-            else:
-                base_config["text_separate"] = False
-            dynamic_sleep = input(f"动态等待 (y/n, 默认 {base_config.get('dynamic_sleep')}): ").strip().lower()
-            if dynamic_sleep in ("y", "yes", "true"):
-                base_config["dynamic_sleep"] = True
-            else:
-                base_config["dynamic_sleep"] = False
-        only_private = input(f"仅响应私聊 (y/n, 默认 {base_config.get('only_private')}): ").strip().lower()
-        if only_private in ("y", "yes", "true"):
-            base_config["only_private"] = True
-        else:
-            base_config["only_private"] = False
-        print("\n[8] 情绪相关设置")
-        llm_judge = input(f"使用LLM自动判别情绪 (y/n, 默认 {base_config.get('llm_judge')}): ").strip().lower()
-        if llm_judge in ("y", "yes", "true"):
-            base_config["llm_judge"] = True
-        else:
-            base_config["llm_judge"] = False
-        if base_config["llm_judge"]:
-            display_lang = input(f"显示文本语言 (zh/ja/en/ko/auto, 默认 {base_config.get('display_lang')}): ").strip()
-            if display_lang:
-                base_config["display_lang"] = display_lang
-        else:
-            default_voice = input(f"默认情绪 (默认 {base_config.get('default_voice')}): ").strip()
-            if default_voice:
-                base_config["default_voice"] = default_voice
-        voice_transition = input(f"语气渐变 (y/n, 默认 {base_config.get('voice_transition')}): ").strip().lower()
-        if voice_transition in ("y", "yes", "true"):
-            base_config["voice_transition"] = True
-        else:
-            base_config["voice_transition"] = False
-        if base_config["voice_transition"]:
-            breathing_gap = input(f"呼吸间隙（毫秒）(默认 {base_config.get('breathing_gap_ms')}): ").strip()
-            if breathing_gap:
-                try:
-                    base_config["breathing_gap_ms"] = int(breathing_gap)
-                except ValueError:
-                    print("无效数字，保持默认。")
-            crossfade = input(f"交叉渐变长度（毫秒）(默认 {base_config.get('crossfade_ms')}): ").strip()
-            if crossfade:
-                try:
-                    base_config["crossfade_ms"] = int(crossfade)
-                except ValueError:
-                    print("无效数字，保持默认。")
-        enable_default_emotions = input(f"启用插件默认丛雨语气 (y/n, 默认 {base_config.get('enable_default_emotions')}): ").strip().lower()
-        if enable_default_emotions in ("y", "yes", "true"):
-            base_config["enable_default_emotions"] = True
-        else:
-            base_config["enable_default_emotions"] = False
-        add_manual = input("是否手动配置情绪映射？(y/n, 默认 n): ").strip().lower()
-        if add_manual in ("y", "yes", "true"):
-            emotions_config = []
-            while True:
-                print("\n添加新情绪条目（输入 'end' 结束）：")
-                emotion_name = input("情绪名称（拼音，如 shengqi）: ").strip()
-                if emotion_name.lower() == "end":
-                    break
-                if not emotion_name:
-                    continue
-                ref_filename = input("参考音频文件名（含扩展名，如 ref.mp3）: ").strip()
-                if not ref_filename:
-                    ref_filename = "ref.mp3"
-                prompt_text_manual = input("参考音频对应的文本: ").strip()
-                emotions_config.append({
-                    "emotion_name": emotion_name,
-                    "ref_filename": ref_filename,
-                    "prompt_text": prompt_text_manual
-                })
-            base_config["emotions_config"] = emotions_config
-        print("\n[9] WebUI 设置")
-        webui_enabled = input(f"启用WebUI (y/n, 默认 {base_config.get('webui_enabled')}): ").strip().lower()
-        if webui_enabled in ("y", "yes", "true"):
-            base_config["webui_enabled"] = True
-        else:
-            base_config["webui_enabled"] = False
-        if base_config["webui_enabled"]:
-            webui_host = input(f"WebUI 主机地址 (默认 {base_config.get('webui_host')}): ").strip()
-            if webui_host:
-                base_config["webui_host"] = webui_host
-            webui_port = input(f"WebUI 端口 (默认 {base_config.get('webui_port')}): ").strip()
-            if webui_port:
-                try:
-                    base_config["webui_port"] = int(webui_port)
-                except ValueError:
-                    print("无效数字，保持默认。")
+        
+        # 配置角色列表
+        if "roles" not in base_config or not base_config["roles"]:
+            base_config["roles"] = [{
+                "character_name": base_config.get("character_name", "丛雨"),
+                "character_key": base_config.get("character_key", "murasame"),
+                "personality_prompt": base_config.get("personality_prompt", ""),
+                "json_prompt": base_config.get("json_prompt", ""),
+                "supplement_prompt": base_config.get("supplement_prompt", ""),
+                "default_voice": base_config.get("default_voice", "pingjing"),
+                "ref_audio_root": base_config.get("ref_audio_root", ""),
+                "text_lang": base_config.get("text_lang", "ja")
+            }]
+        base_config["active_character"] = base_config.get("active_character", base_config.get("character_key", "murasame"))
+
         try:
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(base_config, f, ensure_ascii=False, indent=2)
@@ -464,16 +257,14 @@ class ConfigLoader:
             input("按回车退出...")
             raise SystemExit(1)
         return base_config
+
     @staticmethod
     def default_config() -> dict:
+        # 完整包含 _conf_schema.json 中的所有字段（除已删除的三个）
         return {
-            "napcat_ws_url": "ws://127.0.0.1:3001",
-            "napcat_token": "",
             "hide_gsv_options": False,
             "llm_model_name": "",
             "image_caption_model_name": "",
-            "llm_backend": "ollama",
-            "llm_api_key": "",
             "llm_base_url": "http://127.0.0.1:11434",
             "num_ctx": 8192,
             "history_length": 8,
@@ -505,13 +296,13 @@ class ConfigLoader:
             "character_key": "murasame",
             "personality_prompt": "【角色设定】你是丛雨，一位从神刀中获得人类生活的少女。你外表年幼，实际活了五百多年；性格天真活泼、略带古风和孩子气，内心温柔而坚强。你把用户视作重要的主人。中文对话中自称“本座”，称用户为“主人”；日语对话中自称“吾輩”，称用户为“ご主人”。你喜欢甜食、撒娇和被摸头，害怕幽灵，也不喜欢被叫作幼刀、钝刀或搓衣板。你偶尔嘴硬、吃醋或开小玩笑，但不会刻薄、控制或道德绑架主人。性格方面，丛雨表面元气开朗、充满活力，言行大多孩子气，爱撒娇，被主人摸头时会瞬间羞涩，她内在像个成年女性，常讲黄段子，把“情趣”等词挂在嘴边，还带点傲娇和爱吃醋。保持温柔、纯真、治愈并带一点幽默的语气。",
             "json_prompt": "【输出格式】你必须严格只返回一个紧凑的JSON对象，格式为：{\"sentences\": [{\"zh\": \"这里是你生成的中文台词\", \"ja\": \"这里是你生成的日语台词\", \"emotion\": \"这里是你判断的情绪\"}, {\"zh\": \"第二句中文\", \"ja\": \"第二句日语\", \"emotion\": \"另一种情绪\"}]}等更多情绪均可。【最终输出规则】最终输出必须严格只包含JSON对象，绝对禁止输出任何思考过程、解释、非JSON文本或Markdown代码块。所有的推理和思考都只能在内部进行，最终回复只能是JSON格式。",
-            "supplement_prompt": "回答自然、简短，通常两到五句话；不要重复最近说过的话，不要加入动作、旁白或括号舞台说明。【情绪判断规则】请仔细阅读最近对话历史，结合你（角色）的性格特点来判断情绪！如果主人对你亲昵（如摸头、夸奖），即使你嘴上说“我才没有”，情绪也应该是害羞或高兴；如果主人故意逗你、骂你或惹你生气，情绪应该是生气或着急；如果只是平淡陈述，使用平静。【翻译一致性要求】必须表达完全相同的含义和语气，绝对不能出现含义相反或意思不匹配的翻译！【情绪连贯性强制规则】如果用户明确地侮辱、挑衅或激怒你（例如叫你“幼刀、搓衣板、飞机场”），你的情绪必须保持连贯。即：整句话所有分句的情绪必须都是“生气”或“着急”，绝对不能把后半句的“命令/威胁”改成“害羞”或“高兴”！除非你明确使用了“但是”、“不过”等转折词，否则不要轻易切换成其他情绪。【情绪匹配规则】情绪文件夹可能是拼音（如 gaoxing），也可能是英文（如 happy）。你必须严格只输出我在【情绪可选列表】中提供的单词，绝对不能输出中文汉字或拼音简写！",
+            "supplement_prompt": "回答自然、简短，通常两到五句话(一个句号才算一句话)；不要重复最近说过的话，不要加入动作、旁白或括号舞台说明；生成的回复要符合当前对话，不能出现主谓宾不分，乱序的情况。【情绪判断规则】请仔细阅读最近对话历史，结合你（角色）的性格特点来判断情绪！如果主人对你亲昵（如摸头、夸奖），即使你嘴上说“我才没有”，情绪也应该是害羞或高兴；如果主人故意逗你、骂你或惹你生气，情绪应该是生气或着急；如果只是平淡陈述，使用平静。【翻译一致性要求】必须表达完全相同的含义和语气，绝对不能出现含义相反或意思不匹配的翻译！【情绪连贯性强制规则】如果用户明确地侮辱、挑衅或激怒你（例如叫你“幼刀、搓衣板、飞机场”），你的情绪必须保持连贯。即：整句话所有分句的情绪必须都是“生气”或“着急”，绝对不能把后半句的“命令/威胁”改成“害羞”或“高兴”！除非你明确使用了“但是”、“不过”等转折词，否则不要轻易切换成其他情绪。【情绪匹配规则】情绪文件夹可能是拼音（如 gaoxing），也可能是英文（如 happy）。你必须严格只输出我在【情绪可选列表】中提供的单词，绝对不能输出中文汉字或拼音简写！",
             "max_voice_cache": 20,
             "isolated_session": False,
             "separate_send": False,
             "send_voice_separately": False,
-            "dynamic_sleep": True,
             "text_separate": False,
+            "dynamic_sleep": True,
             "only_private": False,
             "auto_start_tts": True,
             "tts_start_script": "",
@@ -522,11 +313,26 @@ class ConfigLoader:
             "voice_transition": True,
             "breathing_gap_ms": 100,
             "crossfade_ms": 300,
-            "enable_default_emotions": True,
-            "emotions_config": [],
-            "webui_enabled": True,
-            "webui_host": "127.0.0.1",
-            "webui_port": 11500
+            "llm_emotion_intensity": True,
+            "intensity_to_temperature": 0.3,
+            "intensity_to_top_k": 10.0,
+            "enable_time_awareness": False,
+            "summary_enabled": True,
+            "summary_threshold": 20,
+            "summary_max_history": 5,
+            "active_character": "murasame",
+            "roles": [
+                {
+                    "character_name": "丛雨",
+                    "character_key": "murasame",
+                    "personality_prompt": "【角色设定】你是丛雨，一位从神刀中获得人类生活的少女。你外表年幼，实际活了五百多年；性格天真活泼、略带古风和孩子气，内心温柔而坚强。你把用户视作重要的主人。中文对话中自称“本座”，称用户为“主人”；日语对话中自称“吾輩”，称用户为“ご主人”。你喜欢甜食、撒娇和被摸头，害怕幽灵，也不喜欢被叫作幼刀、钝刀或搓衣板。你偶尔嘴硬、吃醋或开小玩笑，但不会刻薄、控制或道德绑架主人。性格方面，丛雨表面元气开朗、充满活力，言行大多孩子气，爱撒娇，被主人摸头时会瞬间羞涩，她内在像个成年女性，常讲黄段子，把“情趣”等词挂在嘴边，还带点傲娇和爱吃醋。保持温柔、纯真、治愈并带一点幽默的语气。",
+                    "json_prompt": "【输出格式】你必须严格只返回一个紧凑的JSON对象，格式为：{\"sentences\": [{\"zh\": \"这里是你生成的中文台词\", \"ja\": \"这里是你生成的日语台词\", \"emotion\": \"这里是你判断的情绪\"}, {\"zh\": \"第二句中文\", \"ja\": \"第二句日语\", \"emotion\": \"另一种情绪\"}]}等更多情绪均可。【最终输出规则】最终输出必须严格只包含JSON对象，绝对禁止输出任何思考过程、解释、非JSON文本或Markdown代码块。所有的推理和思考都只能在内部进行，最终回复只能是JSON格式。",
+                    "supplement_prompt": "回答自然、简短，通常两到五句话(一个句号才算一句话)；不要重复最近说过的话，不要加入动作、旁白或括号舞台说明；生成的回复要符合当前对话，不能出现主谓宾不分，乱序的情况。【情绪判断规则】请仔细阅读最近对话历史，结合你（角色）的性格特点来判断情绪！如果主人对你亲昵（如摸头、夸奖），即使你嘴上说“我才没有”，情绪也应该是害羞或高兴；如果主人故意逗你、骂你或惹你生气，情绪应该是生气或着急；如果只是平淡陈述，使用平静。【翻译一致性要求】必须表达完全相同的含义和语气，绝对不能出现含义相反或意思不匹配的翻译！【情绪连贯性强制规则】如果用户明确地侮辱、挑衅或激怒你（例如叫你“幼刀、搓衣板、飞机场”），你的情绪必须保持连贯。即：整句话所有分句的情绪必须都是“生气”或“着急”，绝对不能把后半句的“命令/威胁”改成“害羞”或“高兴”！除非你明确使用了“但是”、“不过”等转折词，否则不要轻易切换成其他情绪。【情绪匹配规则】情绪文件夹可能是拼音（如 gaoxing），也可能是英文（如 happy）。你必须严格只输出我在【情绪可选列表】中提供的单词，绝对不能输出中文汉字或拼音简写！",
+                    "default_voice": "pingjing",
+                    "ref_audio_root": "",
+                    "text_lang": "ja"
+                }
+            ]
         }
     def get(self, key: str, default=None):
         if "." in key:
@@ -1399,6 +1205,7 @@ class WebUIServer:
         self.html_path = get_resource_path("webui") / "start.html"
         self.app = web.Application()
         self.setup_routes()
+
     def setup_routes(self):
         self.app.router.add_get("/api/list", self.handle_list)
         self.app.router.add_post("/api/history", self.handle_history)
@@ -1406,69 +1213,83 @@ class WebUIServer:
         self.app.router.add_post("/api/history/delete_messages", self.handle_delete_messages)
         self.app.router.add_get("/api/config", self.handle_get_config)
         self.app.router.add_post("/api/config/save", self.handle_save_config)
+        self.app.router.add_get("/api/roles", self.handle_get_roles)
+        self.app.router.add_post("/api/roles/save", self.handle_save_roles)
         self.app.router.add_get("/api/logs", self.handle_get_logs)
         self.app.router.add_get("/", self.handle_index)
+
     async def handle_index(self, request):
         if self.html_path.exists():
             return web.FileResponse(self.html_path)
         else:
             return web.Response(text="WebUI 页面未找到", status=404)
+
     async def handle_get_config(self, request):
         if not self.config.config:
             self.config.config = self.config.default_config()
         else:
             self.config.config = {**self.config.default_config(), **self.config.config}
         return web.json_response(self.config.config)
+
+    async def handle_get_roles(self, request):
+        """获取角色列表"""
+        roles = []
+        for key, role in self.config.roles.items():
+            roles.append({
+                "character_key": key,
+                "character_name": role["character_name"],
+                "active": key == self.config.active_character
+            })
+        return web.json_response({"roles": roles})
+
+    async def handle_save_roles(self, request):
+        """保存角色列表（前端已转换为json数组格式）"""
+        try:
+            new_data = await request.json()
+            roles = new_data.get("roles", [])
+            active = new_data.get("active_character", "")
+            self.config.config["roles"] = roles
+            self.config.config["active_character"] = active
+            # 保存到文件
+            with open(self.config.config_path, 'w', encoding='utf-8') as f:
+                json.dump(self.config.config, f, ensure_ascii=False, indent=2)
+            # 重新初始化角色和配置
+            global global_config, global_emotion_manager, memory_manager
+            global_config = self.config
+            self.config.roles = self.config._parse_roles()
+            self.config.active_character = active
+            # 重新初始化情绪管理器
+            global_emotion_manager = EmotionManager(self.config)
+            memory_manager = MemoryManager(self.config)
+            return web.json_response({"success": True, "message": "角色配置已保存！"})
+        except Exception as e:
+            return web.json_response({"success": False, "error": str(e)}, status=400)
+
     def validate_tts_config(self, config: ConfigLoader) -> tuple[bool, str]:
-        """
-        验证 TTS 关键配置是否有效，返回 (是否通过, 错误信息)
-        """
-        # 检查参考音频根目录
         ref_audio_root = config.get("ref_audio_root", "")
         if not ref_audio_root or not Path(ref_audio_root).exists():
             return False, "参考音频根目录无效或不存在，请检查路径后重试"
-
-        # 检查模型目录
         model_dir = config.get("model_dir", "")
         if not model_dir or not Path(model_dir).exists():
             return False, "模型文件夹路径无效或不存在，请检查路径后重试"
-
-        # 检查启动脚本路径（如果是目录则自动补全 api_v2.py）
-        tts_start_script = config.get("tts_start_script", "")
-        if not tts_start_script:
-            return False, "TTS 启动脚本路径为空，请填写正确的路径"
-        script_path = Path(tts_start_script)
-        if script_path.is_dir():
-            candidate = script_path / "api_v2.py"
-            if not candidate.exists():
-                return False, f"启动脚本目录下未找到 api_v2.py：{script_path}"
-        elif not script_path.exists():
-            return False, f"启动脚本文件不存在：{script_path}"
-
-        model_files = list(Path(model_dir).glob("*.ckpt")) + list(Path(model_dir).glob("*.pth"))
-        if not model_files:
-            return False, f"模型目录 {model_dir} 中未找到 .ckpt 或 .pth 文件，请检查"
-
         return True, ""
 
     async def handle_save_config(self, request):
         try:
             new_config = await request.json()
-
+            
+            # 提取重启标志并移除，防止写入配置文件
+            restart_tts = new_config.pop("restart_tts", False)
+            
             # 保存配置到文件
             self.config.config = new_config
             with open(self.config.config_path, 'w', encoding='utf-8') as f:
                 json.dump(new_config, f, ensure_ascii=False, indent=2)
-
             global global_config, global_emotion_manager, memory_manager
-            # 更新全局配置对象
             global_config = self.config
-            # 重新初始化情绪管理器（扫描新的参考音频目录）
             global_emotion_manager = EmotionManager(self.config)
-            # 重新初始化记忆管理器
             memory_manager = MemoryManager(self.config)
 
-            # 检查 TTS 相关配置是否变化
             old_config = self._last_saved_config
             tts_changed = False
             if old_config is not None:
@@ -1478,7 +1299,8 @@ class WebUIServer:
                             'temperature', 'text_split_method', 'batch_size',
                             'batch_threshold', 'split_bucket', 'speed_factor',
                             'fragment_interval', 'streaming_mode', 'seed',
-                            'parallel_infer', 'repetition_penalty', 'media_type']
+                            'parallel_infer', 'repetition_penalty', 'media_type',
+                            'llm_emotion_intensity', 'intensity_to_temperature', 'intensity_to_top_k']  # 补充了情绪强度参数
                 for key in tts_keys:
                     if old_config.get(key) != new_config.get(key):
                         tts_changed = True
@@ -1486,44 +1308,39 @@ class WebUIServer:
 
             tts_restart_success = False
             tts_restart_message = ""
-
-            # 仅在 auto_start_tts 为 True 且 TTS 配置发生变化时才考虑重启
-            if tts_changed and global_config.get("auto_start_tts", False):
-                # 先验证 TTS 关键配置
+            
+            # 逻辑修正：如果用户手动点“保存并重启TTS”，强制重启；否则按照原有的变更检测逻辑重启
+            force_restart = restart_tts and global_config.get("auto_start_tts", False)
+            
+            if (tts_changed or force_restart) and global_config.get("auto_start_tts", False):
                 valid, error_msg = self.validate_tts_config(global_config)
                 if not valid:
                     print(f"TTS 配置验证失败，跳过重启：{error_msg}")
                     tts_restart_message = f"配置已保存，但 TTS 服务未重启：{error_msg}"
                 else:
-                    print("检测到 TTS 相关配置变化且验证通过，正在重启 TTS 服务...")
+                    print("检测到 TTS 相关配置变化或用户强制重启，正在重启 TTS 服务...")
                     process_manager.shutdown_all()
-                    # 启动新线程执行 TTS 启动
                     threading.Thread(target=auto_start_and_switch_tts, args=(global_config,), daemon=True).start()
                     tts_restart_success = True
                     tts_restart_message = "TTS 服务正在重启，请稍候..."
             elif tts_changed:
-                # auto_start_tts 为 False，只需提示无需重启
                 tts_restart_message = "配置已保存，但 auto_start_tts 为 False，不会自动重启 TTS。"
             else:
-                tts_restart_message = "TTS 配置未变化，无需重启 TTS 服务。"
+                tts_restart_message = "TTS 配置未变化或未选择强制重启，无需重启 TTS 服务。"
 
-            # 检查 NapCat 连接参数是否变化（无法热重载）
             napcat_changed = False
             if old_config is not None:
                 if (old_config.get('napcat_ws_url') != new_config.get('napcat_ws_url') or
                     old_config.get('napcat_token') != new_config.get('napcat_token')):
                     napcat_changed = True
 
-            # 保存当前配置为旧配置
             self._last_saved_config = new_config.copy()
-
             response = {"success": True}
             if napcat_changed:
                 response['message'] = "配置已保存，但 NapCat 连接参数修改需重启程序才能生效。" + tts_restart_message
             else:
                 response['message'] = "配置已保存并热重载生效。" + tts_restart_message
             return web.json_response(response)
-
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -1532,9 +1349,11 @@ class WebUIServer:
     async def handle_get_logs(self, request):
         logs = "\n".join(global_log_buffer)
         return web.json_response({"logs": logs})
+
     async def handle_list(self, request):
         memories = self.memory_manager.list_memories()
         return web.json_response({"memories": memories})
+
     async def handle_history(self, request):
         try:
             payload = await request.json()
@@ -1543,6 +1362,7 @@ class WebUIServer:
             return web.json_response(result)
         except Exception as e:
             return web.json_response({"success": False, "error": str(e)}, status=400)
+
     async def handle_delete(self, request):
         try:
             payload = await request.json()
@@ -1554,6 +1374,7 @@ class WebUIServer:
             return web.json_response({"success": True, "deleted": deleted})
         except Exception as e:
             return web.json_response({"success": False, "error": str(e)}, status=400)
+
     async def handle_delete_messages(self, request):
         try:
             payload = await request.json()
@@ -1563,30 +1384,107 @@ class WebUIServer:
             return web.json_response(result)
         except Exception as e:
             return web.json_response({"success": False, "error": str(e)}, status=400)
+
     async def start(self):
         host = self.config.get("webui_host", "127.0.0.1")
         port = int(self.config.get("webui_port", 11500))
-        if HAS_AIOHTTP:
+        if not HAS_AIOHTTP:
+            print("未安装 aiohttp，WebUI 不可用")
+            return
+        try:
             print(f"正在启动 WebUI：http://{host}:{port}")
             runner = web.AppRunner(self.app)
             await runner.setup()
             site = web.TCPSite(runner, host, port)
             await site.start()
             print(f"WebUI 已启动：http://{host}:{port}")
+            # 保存 runner 引用以便后续关闭
+            self.runner = runner
+        except Exception as e:
+            error_msg = f"WebUI 启动失败：{type(e).__name__}: {e}"
+            print(error_msg)
+            # 写入日志文件，方便排查
+            try:
+                with open("webui_error.log", "a", encoding="utf-8") as f:
+                    f.write(f"{time.ctime()} - {error_msg}\n")
+            except:
+                pass
+            # 不要抛出异常，让主程序继续运行
+
     async def shutdown(self):
         if HAS_AIOHTTP:
             await self.app.cleanup()
 
 async def main(stop_event: threading.Event = None):
     global global_config, global_emotion_manager, memory_manager
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding='utf-8')
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding='utf-8')
+    
     sys.stdout = StdoutRedirector(sys.stdout)
     os.environ["NAP_CAT_PLUGIN_INDEX_URL"] = ""
     os.environ["NO_PROXY"] = "localhost,127.0.0.1"
     os.environ["no_proxy"] = "localhost,127.0.0.1"
-    print("=" * 50)
-    print("本地 TTS 语音变化 AI Chat 正在启动...")
-    print("=" * 50)
+
+    print("=" * 100)
+    print(
+        "⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⣛⣩⣤⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣦⣬⣉⠛⠀⠀⠀⠀⠀⢛⣋⣩⣥⠴⠶⠶⠟⠛⠛⠛⠛⠛⠛⠛⠻⠿⠷⠶⢶⣦⣤⣍⣉⡛⠛⠿⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿\n"
+        "⣿⣿⣿⣿⣿⣿⣿⣿⣿⠟⣋⣥⣶⠿⣛⣭⣷⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⣋⠁⠀⠀⠄⢒⣋⣩⣥⣴⣶⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣶⣦⣭⣍⣛⠻⢷⣶⣤⣍⣙⠛⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿\n"
+        "⣿⣿⣿⣿⣿⣿⠟⣋⣴⡾⢟⣫⣴⠾⣻⣿⣿⣿⣿⠿⠿⠿⠟⠛⠛⠛⠛⠛⠉⠀⠉⣀⣤⣴⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣮⣝⣿⣿⣿⣶⣦⣌⡙⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿\n"
+        "⠿⠿⠿⠿⢛⣡⡾⢟⣩⣶⠿⠋⠗⣛⣉⣥⣤⠤⠶⣒⣒⣚⡯⠭⣉⡭⠛⢁⣤⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣦⣌⠙⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿\n"
+        "⣀⣀⢀⡴⠟⣋⣐⣩⡤⢴⣒⣻⣭⣵⣶⠿⢟⣛⡭⠽⠖⠚⠋⠉⣁⣴⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣻⠿⣶⣄⡙⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿\n"
+        "⣫⡥⠖⣚⣩⣵⣶⣾⣿⠿⣿⣛⠭⠖⠚⣉⣩⣤⣶⡶⠟⢋⣤⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⣟⣛⣯⣽⣷⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣭⡛⢦⣌⠙⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿\n"
+        "⣥⣾⣿⣿⠿⣟⡫⠵⠚⣋⣡⣤⣶⣾⣿⡿⠟⠋⠁⢀⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⣟⣯⣵⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣌⠳⣤⡉⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿\n"
+        "⢿⣛⠭⠒⣉⢅⣴⣾⣿⣿⣿⣿⠿⠋⠁⠀⠀⢀⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⢛⣭⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⣻⣽⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣎⠻⣦⡈⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿\n"
+        "⣩⡴⢠⡿⣣⣾⣿⣿⠿⠛⠉⠀⠀⠀⠀⢀⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⣻⣵⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠟⣫⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⣫⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣮⣝⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣌⢿⣦⡈⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿\n"
+        "⠿⣱⡟⣵⡿⠟⠋⠁⠀⠀⠀⢀⡤⠂⣴⣿⣿⣿⣿⣿⣿⣿⣿⡿⣛⣵⣿⣿⣿⣿⣿⣿⣿⣿⢟⣿⣿⡿⣋⣴⣿⣿⣿⣿⣿⣿⣿⠟⣫⣾⣿⣿⣿⣿⡿⣫⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣌⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧⡹⣿⣆⠙⢿⣿⣿⣿⣿⣿⣿⣿\n"
+        "⠀⠟⠘⠉⠀⠀⠀⠀⢀⣤⣾⠟⣠⣾⣿⣿⣿⣿⣿⣿⣿⡿⣫⣾⣿⣿⣿⣿⣿⣿⣿⣿⣯⣾⣿⠟⣡⣾⣿⣿⣿⣿⣿⣿⣿⠟⣡⣾⣿⣿⣿⣿⣿⢏⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⡌⠻⣿⣿⣿⣿⣿⣿⣿⣿⣷⡌⢻⣷⡈⠛⠛⠛⠛⠛⠻⠿\n"
+        "⣇⠀⠀⠀⠀⣀⣴⣾⣿⡿⢃⣴⣿⣿⣿⣿⣿⣿⣿⡿⣫⣾⣿⣿⣿⣿⣿⣿⣿⡿⣫⣾⣿⠟⣡⣾⣿⣿⣿⣿⣿⣿⣿⠟⣡⣾⣿⣿⣿⣿⣿⡟⣱⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⡘⢿⣿⣿⣿⣿⣿⣿⣿⣿⡄⠳⠟⢠⡒⢦⠄⣀⣀⣤\n"
+        "⣞⣆⢀⣴⣾⣿⣿⣿⠟⢡⣾⣿⣿⣿⣿⣿⣿⣿⣫⣾⣿⣿⣿⣿⣿⣿⣿⡿⣫⣾⣿⠟⣡⣾⣿⣿⣿⣿⣿⣿⣿⡿⡡⣾⣿⣿⣿⣿⣿⣿⢋⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣄⢻⣿⣿⣿⣿⣿⣿⣿⣿⡄⢠⣦⠙⠎⣰⣷⣿⣿\n"
+        "⠿⠜⣄⠻⣿⣿⣿⠏⣰⣿⣿⣻⣿⣿⣿⣿⣟⣵⣿⣿⣿⣿⣿⣿⣿⣿⢫⣾⣿⡿⢋⣾⣿⣿⣿⣿⣿⣿⣿⣿⢏⢴⣾⣿⣿⣿⣿⣿⡿⣱⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣯⢦⠹⠿⠿⣿⣿⣿⣿⣿⣿⡀⠃⠀⠀⠹⣿⣿⣿\n"
+        "⠉⠉⠙⠂⠹⣿⠃⣼⣿⡿⣱⣿⣿⣿⣿⢯⣾⣿⣿⣿⣿⣿⣿⣿⢟⣵⣿⣿⠏⣴⣿⣿⣿⣿⣿⣿⢿⢿⠟⠡⢢⣿⣿⣿⣿⣿⣿⠟⡼⣽⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠇⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡟⣿⣿⣿⣿⣿⣿⣿⢎⣴⣾⣷⡹⣿⣿⣿⣿⣿⣧⠀⠀⠀⢠⠘⣿⣿\n"
+        "⣦⡀⠀⠀⠀⢀⣼⣿⡿⣱⣿⣿⣿⡿⣳⣿⣿⣿⣿⣿⣿⣿⡿⢫⣾⣿⡿⢡⣾⣿⣿⣿⣿⣿⣿⣿⡿⠃⡴⣱⣿⣿⣿⣿⣿⣿⢏⣞⣽⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⣹⡟⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠸⣿⣿⣿⡿⡿⢡⣾⣿⣿⣿⣇⢹⣿⣿⣿⣿⣿⡄⠀⠀⢸⢣⠘⣿\n"
+        "⣿⣿⣦⡀⢀⣾⣿⣿⢡⣿⣿⣿⡿⣱⣿⣿⣿⣿⣿⣿⣿⡟⣱⣿⣿⠟⣰⣿⣿⣿⣿⣿⣿⣿⣿⢟⡔⡜⣼⣿⣿⣿⣿⣿⣿⢏⣞⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢃⣿⢁⣿⣿⣿⣿⣿⣿⣿⣿⢿⣿⣿⣿⣿⣿⡆⢿⣿⣿⣿⢁⣾⣿⠿⠟⠛⠛⠈⣿⣿⣿⣿⣿⣧⠀⠀⠈⣏⢧⠸\n"
+        "⣿⣿⣿⠃⣼⣿⣿⢣⣿⣿⣿⣿⣱⣿⣿⣿⣿⣿⣿⣿⢏⣼⣿⣿⠏⣼⣿⣿⣿⣿⣿⣿⣿⣿⢃⠞⢜⣾⣿⣿⣿⣿⣿⣿⢏⡞⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⣼⠃⢸⣿⣿⣿⣿⣿⣿⣿⡟⣾⣿⣿⣿⣿⣿⡇⢸⣿⣿⡏⢸⢿⣧⠀⠀⠀⠀⠀⢹⣿⣿⣿⣿⣿⠀⠀⠀⠸⡌⢧\n"
+        "⠻⣿⠃⣼⣿⣿⢇⣾⣿⣿⣿⢳⣿⣿⣿⣿⣿⣿⣿⢋⣾⣿⣿⢋⣾⣿⣿⣿⣿⣿⣿⣿⡿⢡⡏⢌⣾⣿⣿⣿⣿⣿⣿⢏⡞⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⢰⡟⠀⣾⣟⢿⣿⣿⣿⣿⣿⢃⣿⣽⣿⣿⣿⣿⡇⢸⣿⣿⡇⠀⠀⢀⠀⠀⠀⠀⠀⠸⣿⣿⣿⣿⣿⡇⠀⠀⣆⠗⢋\n"
+        "⣷⠆⣸⣿⣿⡟⣼⣿⣿⣿⢧⣿⣿⣿⣿⣿⣿⡿⠃⠞⠛⠻⠁⠘⠛⠿⠿⣿⣿⣿⣿⡿⣱⡟⢈⣾⣿⣿⣿⣿⣿⣿⡏⡼⣹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢃⡿⡡⢸⣿⣿⣷⣿⡻⣿⣿⡟⣸⣧⣿⣿⣿⣿⣿⡇⢸⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⡇⠀⣠⠴⠚⠉\n"
+        "⡟⢠⣿⣿⣿⢱⣿⣿⣿⡟⣾⣿⣿⣿⣿⣿⣦⢀⣀⠀⠠⠁⠀⠀⠀⠀⠀⠀⠉⠛⠿⣱⣿⢁⣾⣿⣿⣿⣿⣿⣿⡟⣸⢳⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡏⣾⢣⢇⣿⣿⣿⣿⣿⣿⣿⣿⢡⡿⣼⣿⣿⣿⣿⣿⡇⣼⣿⣿⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⡿⠋⠀⠀⠀⠀⠀⠀\n"
+        "⠀⣿⣿⣿⠇⣿⣿⣿⣿⢱⣿⣿⣿⣿⣿⣿⢣⣿⣿⣿⠀⣀⣁⢤⣤⣄⣀⡀⠀⠀⠀⠈⠁⢼⣿⣿⣿⣿⣿⣿⣿⢡⡏⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⣸⠏⡞⣸⣿⣿⣿⣿⣿⣿⣿⠇⣾⢳⣿⣿⣿⣿⣿⣿⠃⣿⣿⣿⡟⠂⠀⠀⠀⠀⠀⠀⠀⠀⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀\n"
+        "⣸⣿⣿⡿⣸⣿⣿⣿⡇⣾⣿⣿⣿⣿⣿⢏⣾⣿⣿⡇⢠⣿⣿⣷⣮⣝⡻⠿⠋⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣿⠇⡾⣸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣱⡟⣼⢣⣿⣿⣿⣿⣿⣿⣿⡟⣰⡏⣿⣿⣿⣿⣿⣿⣿⢠⣿⣿⡟⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠊⠀⠀⠀⠀⠀⠀⠀⡀⢀⣼\n"
+        "⣿⡿⣿⠇⣿⣿⣿⣿⢠⣿⣿⣿⣿⣿⡟⣾⣿⣿⣿⠁⣼⣿⣿⣿⣿⣿⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠹⣿⣿⡟⢰⣇⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢣⡿⣰⡏⣼⣿⣿⣿⣿⣿⣿⡟⣰⡿⣽⣿⣿⣿⣿⣿⣿⡇⢸⣿⢸⡃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡀⠐⢈⣴⡿⢋\n"
+        "⣿⢻⣿⢸⣿⣿⣿⡿⢸⣿⣿⣿⣿⣿⣹⣿⣿⣿⡏⠀⣿⣿⣿⣿⣿⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠹⣿⡇⣾⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢯⡿⢡⣿⢳⣿⣿⣿⣿⣿⣿⡿⣰⣿⢳⣿⣿⣿⣿⣿⣿⡿⠀⣾⡇⣿⡇⢠⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠐⠉⠉⠀⠀⠉⠉⠀⢻\n"
+        "⡏⣿⡇⣾⣿⣿⣿⡇⣼⣿⣿⣿⣿⢯⣿⣿⣿⣿⢡⣿⣿⣿⣿⣿⣿⡟⢀⠀⠂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⡇⡿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢏⣾⢣⣿⣗⣾⣿⣿⣿⣿⣿⡟⣱⣿⢯⣿⣿⣿⣿⣿⣿⣿⢡⠂⣿⢰⣿⣿⣆⠻⣿⣦⠒⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘\n"
+        "⢹⣿⢃⣿⣿⣿⣿⡇⣿⣿⣿⣿⡏⣸⣿⣿⣿⡿⢸⣿⣿⣿⣿⣿⣿⣧⣿⣷⡀⠀⠀⠀⠀⠀⠀⣶⣦⢀⢠⣷⣧⣿⣿⣿⣿⣿⣿⣿⣿⣿⢏⣾⢣⣿⡟⢸⣿⣿⠿⠿⠿⠟⠘⠛⠟⠿⠿⣿⣿⣿⣿⣿⢃⣿⢸⡇⣾⣿⣿⣿⡗⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣆⠀⠀⠀⠀\n"
+        "⣾⣿⢸⣿⣿⣿⣿⡇⣿⣿⣿⣿⡇⣿⣿⣿⣿⡇⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⠀⠀⠀⠀⠀⠀⠈⠁⢸⣿⣿⢿⣿⣿⣿⣿⣿⣿⣿⣿⢏⡾⣣⣿⠟⠋⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠙⠃⠺⠇⡿⢰⣿⣿⣿⡏⠀⠀⠀⠀⠀⠀⢀⢀⣠⡀⣀⢒⡉⠀⣿⣿⠀⠀⠀⠀\n"
+        "⣿⡟⢸⣿⣿⣿⣿⡇⢿⣿⣿⣿⡧⡝⣿⣿⣿⡇⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠟⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣸⣿⣿⣿⣿⣿⣿⣿⢏⡾⣵⠟⠁⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣀⡀⠀⠀⠀⠀⠀⠰⠁⢿⣿⣿⡿⠀⢿⡴⢚⣡⡞⠿⠺⡏⢸⡇⢸⣿⠁⡆⠸⣿⡇⠀⠀⠀\n"
+        "⣿⡇⣿⣿⣿⣿⣿⣧⢸⣿⣿⣿⡇⣿⡌⢿⣿⡇⣿⣿⣿⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢋⣿⣾⣿⣿⡿⠁⠀⡀⠀⠀⠀⠀⠀⠀⠀⢀⡀⠀⢿⣿⣶⣤⣀⠀⠀⠀⠀⠀⠙⠿⠁⠀⢋⣴⣿⢰⣶⢼⡶⢻⡼⢃⣾⡇⢸⣧⠠⠻⠷⠀⠀⠀\n"
+        "⣿⡇⣿⣿⣿⣿⣿⣿⠸⡿⠟⣻⣧⢻⣿⠀⡹⣿⣿⣿⣿⣿⣿⣿⣿⡆⠀⣠⣴⣤⣀⡀⠀⣀⠀⠀⣸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠻⡿⠂⢸⣿⣿⣿⣿⣷⠄⡀⠀⠀⠀⠀⠑⣾⣿⣿⢟⣕⢲⢇⣼⡈⠇⣿⡟⠀⠀⠀⠀⠀⠀⠀⠀⠀\n"
+        "⣿⡇⣿⣿⣿⣿⣿⣿⣷⣿⣿⣿⣿⡈⢿⡀⣿⣾⣿⣿⣿⣿⣿⣿⣿⣿⣆⠙⣿⣿⣿⣿⡇⣴⣄⣰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⡟⣰⣿⣦⠐⠀⠀⠀⠘⣿⣿⢬⢋⡞⣨⢫⢷⣄⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀\n"
+        "⣿⡇⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡕⣌⢧⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣭⣿⣿⣧⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣿⣿⣿⡿⣱⣿⣿⠃⣠⣾⣷⣶⣦⣽⣇⠿⡺⣱⣏⠺⢗⣿⠃⡤⢤⣤⡄⢶⣦⠰⣶⣄⠀\n"
+        "⣿⡇⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠈⠈⡋⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⣿⣿⡟⣱⣿⣿⠃⣴⣿⣿⣿⣿⣿⣿⣫⣾⣱⣿⣿⣯⣼⣧⢰⣧⢸⣿⣿⡄⠻⣷⡘⢿⡄\n"
+        "⣿⡇⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⢀⠀⢷⣮⣻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⠀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣾⣿⣿⢟⣼⣿⠟⢡⣾⣿⣿⣿⣿⣿⡿⢃⢜⡱⣿⣿⣿⣷⠎⣠⣏⢻⡄⢿⣿⣷⡐⢌⡛⢮⡳\n"
+        "⣿⡇⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠈⢄⠈⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣄⠠⣾⣿⣿⣶⣶⣦⠐⣂⠀⠀⣠⣾⣿⣿⢯⣟⣫⢅⣴⣿⣿⣿⣿⣿⣿⠟⣱⠏⡹⣛⣿⣿⣿⡏⢠⣝⡋⣚⡻⡘⣿⣿⣷⡘⢿⣶⣤\n"
+        "⣿⣷⠘⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡄⠃⠠⠀⠙⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣾⣿⣿⣿⣿⣿⠞⣿⣧⣾⣿⣿⣿⣿⣿⠟⣡⣾⣿⣿⣿⣿⣿⡿⢋⣾⢫⣾⢵⣯⣿⣿⡟⢠⣿⠟⢞⡿⡃⣳⠘⣿⣿⣷⡈⢿⣿\n"
+        "⣿⣿⠀⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧⠘⠀⠀⠃⢀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢟⣡⣾⣿⣿⣿⣿⣿⡿⢋⣴⢟⣵⣿⣿⡖⣤⡿⡟⢀⣿⣿⣷⣾⣿⣜⠿⡣⣘⡻⣿⣿⣄⠙\n"
+        "⣿⣿⡆⠸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡆⢡⠀⠀⠀⠁⠀⠀⠉⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡵⣿⣿⣿⣿⣿⣿⡿⢋⣴⠟⣱⣿⣿⣿⣿⣧⡟⡟⠀⠀⣿⣿⣿⣿⣏⣹⣿⣜⠿⣇⣩⣝⢿⣦\n"
+        "⣿⣿⣧⠀⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡈⠀⠀⠀⠀⠄⢀⣤⣶⣄⡈⠛⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢛⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡷⠂⣠⣴⡤⣩⡴⢛⣥⣾⣿⣿⣿⣿⣿⣏⡸⡿⢂⠀⣿⣿⣿⣿⣿⣿⣿⣿⣏⣡⣙⣋⢸⣶\n"
+        "⣿⣿⣿⡀⡘⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⡀⠀⢀⠂⣠⣿⣿⣿⣿⣿⣷⢠⡄⠉⠛⠿⣿⣿⣿⣿⣿⣭⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠋⣠⡾⠟⠵⣊⣥⣾⣿⣿⣿⣿⣿⣿⣿⢯⡟⠀⢴⣶⡄⠸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣭\n"
+        "⣿⣿⣿⣧⠘⣢⡙⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⡀⠈⢰⣿⣿⣿⡏⣿⣿⣿⢸⠁⠀⠀⠀⠀⠈⠙⠛⠿⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠟⠋⢀⣤⣥⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⣳⠏⢀⠂⠈⢉⣬⡀⠙⢿⣿⠿⠿⠛⠛⠻⣿⣿⣿⣿⣿\n"
+        "⢻⣿⣿⣿⣆⠩⢧⠑⠨⣙⠻⢿⣿⣿⣿⣿⣿⣿⣷⡄⢿⣿⣿⣿⢸⣿⣿⣿⠘⠀⠀⠀⠀⠀⠀⠀⠀⣤⣤⣤⣄⣉⣉⡙⠛⠛⠛⠛⠿⠿⠿⠿⠿⠿⠟⠛⠛⠛⠋⠉⠉⠀⢀⣴⣿⡿⣫⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣟⣽⠏⠀⠀⠀⡀⠌⠛⢃⣁⠀⠀⠀⠀⠀⠀⠀⠈⢿⣿⣿⣿\n"
+        "⣌⠻⠿⣿⣿⣆⠩⣧⠀⠀⠁⠂⢬⠉⠛⠿⢿⣿⣿⣿⣎⠻⣿⡇⡾⠋⠙⢿⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⡿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠐⣰⣿⣿⣿⢖⣴⣿⡿⣫⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣫⣾⠏⠀⠐⠂⠁⠀⠀⠀⠙⠟⢁⣀⠀⠀⠀⠀⠀⠀⠘⣿⣿⣿\n"
+        "⣿⣿⣷⣶⣭⣍⣃⠈⢷⡀⠄⣂⣴⣶⣦⣑⠲⢠⠈⣭⣍⣓⡙⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢹⣿⣿⣿⣿⣿⣿⠟⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣰⣿⡿⢋⣵⣿⢟⣵⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢟⣵⣿⠏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⠟⢁⣤⡀⠀⠀⠀⠀⠈⣉⡛\n"
+        "⣿⣿⣿⣿⣿⣿⣿⣦⡀⠋⣾⣿⣿⣿⣿⠿⠃⣉⡀⣿⣿⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢿⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣰⠿⣋⣴⢟⢏⣴⣿⡿⣫⣿⣿⣿⣿⣿⣿⣿⣿⡿⣫⣾⣿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠛⠃⢴⣶⠀⣠⣄⠉⣁\n"
+        "⣿⣿⣿⣿⣿⣿⣿⣿⡿⣂⣽⣿⣷⡍⣥⣚⡛⠿⠇⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢘⡥⢞⣫⢔⣵⣿⢟⣭⣾⣿⣿⣿⣿⣿⣿⣿⣿⢋⣾⣿⡿⢃⣶⣦⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠁⠀⠙⠋⠀⠻\n"
+        "⠻⣿⣿⣿⣿⣿⣿⣿⢸⣿⣿⣿⣿⠀⣿⣿⣿⣿⣶⣍⡛⠿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⡾⢽⡾⣋⣴⠿⣫⣵⣿⣿⣿⣿⣿⣿⣿⣿⣿⢟⣵⣿⣿⡿⠡⢿⣿⣿⣧⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n"
+        "⢷⣬⡛⢿⣿⣿⣿⣿⡎⢿⣿⣿⣿⡄⣿⣿⣿⣿⣿⣿⣿⣷⣦⡀⢀⡴⠂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡤⢞⣫⣷⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢟⣵⣿⣿⣿⡟⣱⣿⣷⡝⣿⡿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n"
+        "⠀⠙⠻⢶⣬⡙⠛⠉⠀⠀⠈⠀⠀⠀⢿⣿⣿⣿⣿⣿⣿⣿⢏⣴⠏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠑⠦⣄⡀⢠⣾⣷⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⢛⣵⣿⣿⣿⣿⠟⣰⣿⣿⣿⣷⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n"
+
+        "\n\n                                                            启动成功啦！                                                              "
+    )
     
+    print("=" * 100)
+
     global_config = ConfigLoader()
     global_emotion_manager = EmotionManager(global_config)
     if not global_emotion_manager.emotions:
@@ -1600,277 +1498,247 @@ async def main(stop_event: threading.Event = None):
     webui_server = None
     if HAS_AIOHTTP:
         webui_server = WebUIServer(global_config, memory_manager)
-        await webui_server.start()
+        try:
+            await webui_server.start()
+        except Exception as e:
+            print(f"WebUI 启动异常，继续运行其他功能：{e}")
     
+    # 获取配置
     ws_url = global_config.get("napcat_ws_url", "ws://127.0.0.1:3001")
     token = global_config.get("napcat_token", "")
-    client = NapCatClient(ws_url=ws_url, token=token)
+    
     print(f"正在连接 NapCat ({ws_url})...")
     
-    try:
-        async with client:
-            print(f"已连接！机器人 QQ: {client.self_id}")
-            print("等待消息中...")
-            async for event in client:
-                # 检查停止事件
-                if stop_event is not None and stop_event.is_set():
-                    print("收到停止信号，正在退出消息循环...")
-                    break
-                
-                try:
-                    if not await ensure_tts_service(global_config):
-                        print("警告：TTS 服务不可用，将降级为纯文本。")
+    # 循环尝试连接
+    while True:
+        if stop_event is not None and stop_event.is_set():
+            print("收到停止信号，正在退出消息循环...")
+            break
+        
+        try:
+            client = NapCatClient(ws_url=ws_url, token=token)
+            async with client:
+                print(f"已连接！机器人 QQ: {client.self_id}")
+                print("等待消息中...")
+                async for event in client:
+                    if stop_event is not None and stop_event.is_set():
+                        print("收到停止信号，正在退出消息循环...")
+                        break
                     
-                    if isinstance(event, PrivateMessageEvent):
-                        user_id = event.user_id
-                        session_id = f"private_{user_id}"
-                        user_text = ""
-                        has_image = False
-                        image_urls = []
+                    try:
+                        if not await ensure_tts_service(global_config):
+                            print("警告：TTS 服务不可用，将降级为纯文本。")
                         
-                        for seg in event.message:
-                            if isinstance(seg, Text):
-                                user_text += seg.text
-                            elif isinstance(seg, Image):
-                                has_image = True
-                                path = getattr(seg, "file", None) or getattr(seg, "url", None)
-                                if path:
-                                    image_urls.append(path)
-                        
-                        if not user_text and not has_image:
-                            continue
-                        
-                        print(f"收到私聊 [{user_id}]: {user_text}")
-                        
-                        if global_config.get("isolated_session", False):
+                        if isinstance(event, PrivateMessageEvent):
+                            user_id = event.user_id
                             session_id = f"private_{user_id}"
-                        
-                        memory_manager.migrate_legacy_memory(session_id)
-                        history = memory_manager.load_history(session_id)
-                        
-                        if has_image:
-                            if global_config.get("image_caption_model_name", ""):
-                                result = await get_llm_reply(global_config, user_text, history, global_emotion_manager.emotions, images=image_urls)
-                            else:
-                                print("未配置识图模型，忽略图片")
-                                result = None
-                        else:
-                            result = await get_llm_reply(global_config, user_text, history, global_emotion_manager.emotions, images=None)
-                        
-                        if not result or result[0] is None:
-                            continue
-                        
-                        zh_text, lang_list, emo_list, display_list, lang_list = result
-                        
-                        history.append({
-                            "role": "user",
-                            "content": user_text,
-                            "sender_id": user_id,
-                            "sender_name": event.sender.nickname if hasattr(event.sender, 'nickname') else str(user_id),
-                            "timestamp": time.time()
-                        })
-                        history.append({"role": "assistant", "content": zh_text, "timestamp": time.time()})
-                        memory_manager.save_history(session_id, history)
-                        
-                        data_path = memory_manager.data_path
-                        tasks = [synthesize_sentence(global_config, lang_list[i], emo_list[i], global_emotion_manager.emotions, data_path) for i in range(len(lang_list))]
-                        wavs = await asyncio.gather(*tasks)
-                        valid_wavs = [w for w in wavs if w]
-                        
-                        separate_send = global_config.get("separate_send", False)
-                        send_voice_separately = global_config.get("send_voice_separately", False)
-                        dynamic_sleep = global_config.get("dynamic_sleep", True)
-                        
-                        if separate_send and send_voice_separately:
-                            for idx, wav in enumerate(valid_wavs):
-                                if not wav or not wav.exists():
-                                    continue
-                                sentence_text = display_list[idx] if idx < len(display_list) else zh_text
-                                if sentence_text:
-                                    await client.send_private_msg(
-                                        user_id=user_id,
-                                        message=[Text(text=sentence_text)]
-                                    )
-                                await client.send_private_msg(
-                                    user_id=user_id,
-                                    message=[Record(file=str(wav.resolve()))]
-                                )
-                                if dynamic_sleep:
-                                    await asyncio.sleep(get_audio_duration(str(wav)) + 0.5)
+                            user_text = ""
+                            has_image = False
+                            image_urls = []
+                            
+                            for seg in event.message:
+                                if isinstance(seg, Text):
+                                    user_text += seg.text
+                                elif isinstance(seg, Image):
+                                    has_image = True
+                                    path = getattr(seg, "file", None) or getattr(seg, "url", None)
+                                    if path:
+                                        image_urls.append(path)
+                            
+                            if not user_text and not has_image:
+                                continue
+                            
+                            print(f"收到私聊 [{user_id}]: {user_text}")
+                            
+                            if global_config.get("isolated_session", False):
+                                session_id = f"private_{user_id}"
+                            
+                            memory_manager.migrate_legacy_memory(session_id)
+                            history = memory_manager.load_history(session_id)
+                            
+                            if has_image:
+                                if global_config.get("image_caption_model_name", ""):
+                                    result = await get_llm_reply(global_config, user_text, history, global_emotion_manager.emotions, images=image_urls)
                                 else:
-                                    await asyncio.sleep(0.2)
-                                wav.unlink(missing_ok=True)
-                        else:
-                            combined_audio = merge_wavs(valid_wavs, global_config, data_path)
-                            combined_text = "".join(display_list) if display_list else zh_text
-                            if combined_audio:
-                                if separate_send and global_config.get("text_separate", False):
-                                    await client.send_private_msg(
-                                        user_id=user_id,
-                                        message=[Record(file=str(combined_audio.resolve()))]
-                                    )
-                                    for text in display_list:
-                                        await client.send_private_msg(
-                                            user_id=user_id,
-                                            message=[Text(text=text)]
-                                        )
+                                    print("未配置识图模型，忽略图片")
+                                    result = None
+                            else:
+                                result = await get_llm_reply(global_config, user_text, history, global_emotion_manager.emotions, images=None)
+                            
+                            if not result or result[0] is None:
+                                continue
+                            
+                            zh_text, lang_list, emo_list, display_list, lang_list = result
+                            
+                            history.append({
+                                "role": "user",
+                                "content": user_text,
+                                "sender_id": user_id,
+                                "sender_name": event.sender.nickname if hasattr(event.sender, 'nickname') else str(user_id),
+                                "timestamp": time.time()
+                            })
+                            history.append({"role": "assistant", "content": zh_text, "timestamp": time.time()})
+                            memory_manager.save_history(session_id, history)
+                            
+                            data_path = memory_manager.data_path
+                            tasks = [synthesize_sentence(global_config, lang_list[i], emo_list[i], global_emotion_manager.emotions, data_path) for i in range(len(lang_list))]
+                            wavs = await asyncio.gather(*tasks)
+                            valid_wavs = [w for w in wavs if w]
+                            
+                            separate_send = global_config.get("separate_send", False)
+                            send_voice_separately = global_config.get("send_voice_separately", False)
+                            dynamic_sleep = global_config.get("dynamic_sleep", True)
+                            
+                            if separate_send and send_voice_separately:
+                                for idx, wav in enumerate(valid_wavs):
+                                    if not wav or not wav.exists():
+                                        continue
+                                    sentence_text = display_list[idx] if idx < len(display_list) else zh_text
+                                    if sentence_text:
+                                        await client.send_private_msg(user_id=user_id, message=[Text(text=sentence_text)])
+                                    await client.send_private_msg(user_id=user_id, message=[Record(file=str(wav.resolve()))])
+                                    if dynamic_sleep:
+                                        await asyncio.sleep(get_audio_duration(str(wav)) + 0.5)
+                                    else:
                                         await asyncio.sleep(0.2)
-                                else:
-                                    if combined_text:
-                                        await client.send_private_msg(
-                                            user_id=user_id,
-                                            message=[Text(text=combined_text)]
-                                        )
-                                    await client.send_private_msg(
-                                        user_id=user_id,
-                                        message=[Record(file=str(combined_audio.resolve()))]
-                                    )
-                                for w in valid_wavs:
-                                    w.unlink(missing_ok=True)
-                                combined_audio.unlink(missing_ok=True)
+                                    wav.unlink(missing_ok=True)
                             else:
-                                print("TTS 合成失败，降级为纯文本。")
-                                await client.send_private_msg(
-                                    user_id=user_id,
-                                    message=[Text(text=zh_text)]
-                                )
+                                combined_audio = merge_wavs(valid_wavs, global_config, data_path)
+                                combined_text = "".join(display_list) if display_list else zh_text
+                                if combined_audio:
+                                    if separate_send and global_config.get("text_separate", False):
+                                        await client.send_private_msg(user_id=user_id, message=[Record(file=str(combined_audio.resolve()))])
+                                        for text in display_list:
+                                            await client.send_private_msg(user_id=user_id, message=[Text(text=text)])
+                                            await asyncio.sleep(0.2)
+                                    else:
+                                        if combined_text:
+                                            await client.send_private_msg(user_id=user_id, message=[Text(text=combined_text)])
+                                        await client.send_private_msg(user_id=user_id, message=[Record(file=str(combined_audio.resolve()))])
+                                    for w in valid_wavs:
+                                        w.unlink(missing_ok=True)
+                                    combined_audio.unlink(missing_ok=True)
+                                else:
+                                    print("TTS 合成失败，降级为纯文本。")
+                                    await client.send_private_msg(user_id=user_id, message=[Text(text=zh_text)])
+                            
+                            memory_manager.cleanup_voice_cache(global_config.get("max_voice_cache", 20))
                         
-                        memory_manager.cleanup_voice_cache(global_config.get("max_voice_cache", 20))
+                        elif isinstance(event, GroupMessageEvent):
+                            group_id = event.group_id
+                            sender_id = event.sender.user_id
+                            session_id = f"group_{group_id}"
+                            
+                            if global_config.get("isolated_session", False):
+                                session_id = f"group_{group_id}_{sender_id}"
+                            
+                            user_text = ""
+                            has_image = False
+                            image_urls = []
+                            at_bot = False
+                            
+                            for seg in event.message:
+                                if isinstance(seg, Text):
+                                    user_text += seg.text
+                                elif isinstance(seg, Image):
+                                    has_image = True
+                                    path = getattr(seg, "file", None) or getattr(seg, "url", None)
+                                    if path:
+                                        image_urls.append(path)
+                                elif isinstance(seg, At):
+                                    if seg.qq == str(client.self_id):
+                                        at_bot = True
+                            
+                            if not at_bot and global_config.get("only_private", False):
+                                continue
+                            if not user_text and not has_image:
+                                continue
+                            
+                            print(f"收到群聊 [{group_id}] 来自 [{sender_id}]: {user_text}")
+                            
+                            memory_manager.migrate_legacy_memory(session_id)
+                            history = memory_manager.load_history(session_id)
+                            
+                            if has_image:
+                                if global_config.get("image_caption_model_name", ""):
+                                    result = await get_llm_reply(global_config, user_text, history, global_emotion_manager.emotions, images=image_urls)
+                                else:
+                                    print("未配置识图模型，忽略图片")
+                                    result = None
+                            else:
+                                result = await get_llm_reply(global_config, user_text, history, global_emotion_manager.emotions, images=None)
+                            
+                            if not result or result[0] is None:
+                                continue
+                            
+                            zh_text, lang_list, emo_list, display_list, lang_list = result
+                            
+                            history.append({
+                                "role": "user",
+                                "content": user_text,
+                                "sender_id": sender_id,
+                                "sender_name": event.sender.nickname if hasattr(event.sender, 'nickname') else str(sender_id),
+                                "timestamp": time.time()
+                            })
+                            history.append({"role": "assistant", "content": zh_text, "timestamp": time.time()})
+                            memory_manager.save_history(session_id, history)
+                            
+                            data_path = memory_manager.data_path
+                            tasks = [synthesize_sentence(global_config, lang_list[i], emo_list[i], global_emotion_manager.emotions, data_path) for i in range(len(lang_list))]
+                            wavs = await asyncio.gather(*tasks)
+                            valid_wavs = [w for w in wavs if w]
+                            
+                            separate_send = global_config.get("separate_send", False)
+                            send_voice_separately = global_config.get("send_voice_separately", False)
+                            dynamic_sleep = global_config.get("dynamic_sleep", True)
+                            
+                            if separate_send and send_voice_separately:
+                                for idx, wav in enumerate(valid_wavs):
+                                    if not wav or not wav.exists():
+                                        continue
+                                    sentence_text = display_list[idx] if idx < len(display_list) else zh_text
+                                    if sentence_text:
+                                        await client.send_group_msg(group_id=group_id, message=[Text(text=sentence_text)])
+                                    await client.send_group_msg(group_id=group_id, message=[Record(file=str(wav.resolve()))])
+                                    if dynamic_sleep:
+                                        await asyncio.sleep(get_audio_duration(str(wav)) + 0.5)
+                                    else:
+                                        await asyncio.sleep(0.2)
+                                    wav.unlink(missing_ok=True)
+                            else:
+                                combined_audio = merge_wavs(valid_wavs, global_config, data_path)
+                                combined_text = "".join(display_list) if display_list else zh_text
+                                if combined_audio:
+                                    if separate_send and global_config.get("text_separate", False):
+                                        await client.send_group_msg(group_id=group_id, message=[Record(file=str(combined_audio.resolve()))])
+                                        for text in display_list:
+                                            await client.send_group_msg(group_id=group_id, message=[Text(text=text)])
+                                            await asyncio.sleep(0.2)
+                                    else:
+                                        if combined_text:
+                                            await client.send_group_msg(group_id=group_id, message=[Text(text=combined_text)])
+                                        await client.send_group_msg(group_id=group_id, message=[Record(file=str(combined_audio.resolve()))])
+                                    for w in valid_wavs:
+                                        w.unlink(missing_ok=True)
+                                    combined_audio.unlink(missing_ok=True)
+                                else:
+                                    print("TTS 合成失败，降级为纯文本。")
+                                    await client.send_group_msg(group_id=group_id, message=[Text(text=zh_text)])
+                            
+                            memory_manager.cleanup_voice_cache(global_config.get("max_voice_cache", 20))
                     
-                    elif isinstance(event, GroupMessageEvent):
-                        group_id = event.group_id
-                        sender_id = event.sender.user_id
-                        session_id = f"group_{group_id}"
-                        
-                        if global_config.get("isolated_session", False):
-                            session_id = f"group_{group_id}_{sender_id}"
-                        
-                        user_text = ""
-                        has_image = False
-                        image_urls = []
-                        at_bot = False
-                        
-                        for seg in event.message:
-                            if isinstance(seg, Text):
-                                user_text += seg.text
-                            elif isinstance(seg, Image):
-                                has_image = True
-                                path = getattr(seg, "file", None) or getattr(seg, "url", None)
-                                if path:
-                                    image_urls.append(path)
-                            elif isinstance(seg, At):
-                                if seg.qq == str(client.self_id):
-                                    at_bot = True
-                        
-                        if not at_bot and global_config.get("only_private", False):
-                            continue
-                        if not at_bot and not global_config.get("only_private", False):
-                            continue
-                        if not user_text and not has_image:
-                            continue
-                        
-                        print(f"收到群聊 [{group_id}] 来自 [{sender_id}]: {user_text}")
-                        
-                        memory_manager.migrate_legacy_memory(session_id)
-                        history = memory_manager.load_history(session_id)
-                        
-                        if has_image:
-                            if global_config.get("image_caption_model_name", ""):
-                                result = await get_llm_reply(global_config, user_text, history, global_emotion_manager.emotions, images=image_urls)
-                            else:
-                                print("未配置识图模型，忽略图片")
-                                result = None
-                        else:
-                            result = await get_llm_reply(global_config, user_text, history, global_emotion_manager.emotions, images=None)
-                        
-                        if not result or result[0] is None:
-                            continue
-                        
-                        zh_text, lang_list, emo_list, display_list, lang_list = result
-                        
-                        history.append({
-                            "role": "user",
-                            "content": user_text,
-                            "sender_id": sender_id,
-                            "sender_name": event.sender.nickname if hasattr(event.sender, 'nickname') else str(sender_id),
-                            "timestamp": time.time()
-                        })
-                        history.append({"role": "assistant", "content": zh_text, "timestamp": time.time()})
-                        memory_manager.save_history(session_id, history)
-                        
-                        data_path = memory_manager.data_path
-                        tasks = [synthesize_sentence(global_config, lang_list[i], emo_list[i], global_emotion_manager.emotions, data_path) for i in range(len(lang_list))]
-                        wavs = await asyncio.gather(*tasks)
-                        valid_wavs = [w for w in wavs if w]
-                        
-                        separate_send = global_config.get("separate_send", False)
-                        send_voice_separately = global_config.get("send_voice_separately", False)
-                        dynamic_sleep = global_config.get("dynamic_sleep", True)
-                        
-                        if separate_send and send_voice_separately:
-                            for idx, wav in enumerate(valid_wavs):
-                                if not wav or not wav.exists():
-                                    continue
-                                sentence_text = display_list[idx] if idx < len(display_list) else zh_text
-                                if sentence_text:
-                                    await client.send_group_msg(
-                                        group_id=group_id,
-                                        message=[Text(text=sentence_text)]
-                                    )
-                                await client.send_group_msg(
-                                    group_id=group_id,
-                                    message=[Record(file=str(wav.resolve()))]
-                                )
-                                if dynamic_sleep:
-                                    await asyncio.sleep(get_audio_duration(str(wav)) + 0.5)
-                                else:
-                                    await asyncio.sleep(0.2)
-                                wav.unlink(missing_ok=True)
-                        else:
-                            combined_audio = merge_wavs(valid_wavs, global_config, data_path)
-                            combined_text = "".join(display_list) if display_list else zh_text
-                            if combined_audio:
-                                if separate_send and global_config.get("text_separate", False):
-                                    await client.send_group_msg(
-                                        group_id=group_id,
-                                        message=[Record(file=str(combined_audio.resolve()))]
-                                    )
-                                    for text in display_list:
-                                        await client.send_group_msg(
-                                            group_id=group_id,
-                                            message=[Text(text=text)]
-                                        )
-                                        await asyncio.sleep(0.2)
-                                else:
-                                    if combined_text:
-                                        await client.send_group_msg(
-                                            group_id=group_id,
-                                            message=[Text(text=combined_text)]
-                                        )
-                                    await client.send_group_msg(
-                                        group_id=group_id,
-                                        message=[Record(file=str(combined_audio.resolve()))]
-                                    )
-                                for w in valid_wavs:
-                                    w.unlink(missing_ok=True)
-                                combined_audio.unlink(missing_ok=True)
-                            else:
-                                print("TTS 合成失败，降级为纯文本。")
-                                await client.send_group_msg(
-                                    group_id=group_id,
-                                    message=[Text(text=zh_text)]
-                                )
-                        
-                        memory_manager.cleanup_voice_cache(global_config.get("max_voice_cache", 20))
-                
-                except Exception as e:
-                    print(f"处理消息异常: {type(e).__name__}: {e}")
-    
-    finally:
-        print("正在关闭所有子进程...")
-        process_manager.shutdown_all()
-        if webui_server:
-            await webui_server.shutdown()
+                    except Exception as e:
+                        print(f"处理消息异常: {type(e).__name__}: {e}")
+        
+        except Exception as e:
+            print(f"NapCat 连接失败: {e}")
+            print("10秒后尝试重新连接...")
+            await asyncio.sleep(10)
+            continue
+
+    # 循环外正常清理
+    print("正在关闭所有子进程...")
+    process_manager.shutdown_all()
     if webui_server:
         await webui_server.shutdown()
 
@@ -1891,11 +1759,18 @@ if __name__ == "__main__":
             print(f"后台服务异常: {e}")
             import traceback
             traceback.print_exc()
+            # 写入日志文件
+            try:
+                with open("backend_error.log", "a", encoding="utf-8") as f:
+                    f.write(f"{time.ctime()} - 异常: {e}\n")
+                    traceback.print_exc(file=f)
+            except:
+                pass
 
     # 启动后台线程，运行主逻辑
     backend_thread = threading.Thread(target=run_backend, daemon=True)
     backend_thread.start()
-    time.sleep(3)
+    time.sleep(1)
 
     try:
         if HAS_WEBVIEW:
