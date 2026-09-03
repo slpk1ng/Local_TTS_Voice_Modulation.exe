@@ -7,9 +7,9 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: #f5f7fa; display: flex; height: 100vh; overflow: hidden; }
-        .sidebar { width: 10%; min-width: 120px; background: #1e88e5; color: white; display: flex; flex-direction: column; align-items: center; padding-top: 20px; }
+        .sidebar { width: 10%; min-width: 130px; background: #1e88e5; color: white; display: flex; flex-direction: column; align-items: center; padding-top: 20px; overflow-y: auto; }
         .sidebar .logo { font-size: 22px; font-weight: bold; margin-bottom: 30px; }
-        .sidebar .menu-item { width: 100%; padding: 15px 0; text-align: center; cursor: pointer; font-size: 16px; transition: background 0.2s; user-select: none; }
+        .sidebar .menu-item { width: 100%; padding: 13px 0; text-align: center; cursor: pointer; font-size: 15px; transition: background 0.2s; user-select: none; }
         .sidebar .menu-item:hover { background: #1565c0; }
         .sidebar .menu-item.active { background: #0d47a1; font-weight: bold; }
         .main-content { flex: 1; padding: 20px; overflow-y: auto; background: #f5f7fa; }
@@ -22,8 +22,8 @@
         .form-row label { width: 200px; font-size: 14px; color: #555; padding-top: 8px; font-weight: bold; }
         .form-row .required-mark { color: red; margin-left: 4px; }
         .form-row .optional-mark { color: #888; margin-left: 4px; font-weight: normal; font-size: 12px; }
-        .form-row .field-wrapper { flex: 1; display: flex; flex-direction: column; }
-        .form-row input[type="text"], .form-row input[type="number"], .form-row select, .form-row textarea { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        .form-row .field-wrapper { flex: 1; display: flex; flex-direction: column; min-width: 240px; }
+        .form-row input[type="text"], .form-row input[type="number"], .form-row input[type="password"], .form-row select, .form-row textarea { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
         .form-row input[type="checkbox"] { width: auto; margin-top: 8px; }
         .form-row textarea { min-height: 80px; resize: vertical; }
         .form-row .checkbox-label { display: flex; align-items: center; gap: 8px; }
@@ -33,6 +33,12 @@
         .save-btn:hover { background: #1565c0; }
         .save-btn-restart { background: #ff9800; color: white; border: none; padding: 12px 30px; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 10px; margin-left: 10px; }
         .save-btn-restart:hover { background: #f57c00; }
+        .btn { background: #1e88e5; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .btn:hover { background: #1565c0; }
+        .btn-gray { background: #78909c; } .btn-gray:hover { background: #607d8b; }
+        .btn-green { background: #43a047; } .btn-green:hover { background: #388e3c; }
+        .btn-red { background: #f44336; } .btn-red:hover { background: #d32f2f; }
+        .btn-orange { background: #fb8c00; } .btn-orange:hover { background: #ef6c00; }
         .message { margin: 10px 0; padding: 8px; border-radius: 4px; }
         .message.success { background: #d4edda; color: #155724; }
         .message.error { background: #f8d7da; color: #721c24; }
@@ -52,6 +58,7 @@
         .file-name { font-weight: bold; }
         .last-msg { color: #888; font-size: 13px; }
         .file-subname { color: #999; font-size: 12px; }
+        .file-actions { display: flex; gap: 6px; margin-left: 10px; }
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
         .modal-overlay.active { display: flex; }
         .modal-content { background: white; width: 80%; max-width: 800px; height: 80%; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
@@ -76,6 +83,59 @@
         .tutorial h2 { margin-bottom: 15px; color: #333; }
         .tutorial p { margin-bottom: 10px; line-height: 1.6; }
         .tutorial code { background: #f0f0f0; padding: 2px 5px; border-radius: 3px; }
+        /* ===== 通用数据表 ===== */
+        .data-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 13px; }
+        .data-table th { background: #f0f4f8; color: #333; padding: 10px 8px; text-align: left; border-bottom: 2px solid #e0e0e0; white-space: nowrap; }
+        .data-table td { padding: 8px; border-bottom: 1px solid #eee; vertical-align: middle; word-break: break-all; }
+        .data-table tr:hover td { background: #fafcff; }
+        .section-block { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); max-width: 1100px; margin-left: auto; margin-right: auto; }
+        .section-block > h3 { margin-bottom: 12px; color: #333; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .section-block .sub-desc { font-size: 12px; color: #888; margin: -6px 0 12px; }
+        .inline-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; background: #f7f9fb; border: 1px dashed #cfd8dc; border-radius: 6px; padding: 12px; margin-bottom: 14px; }
+        .inline-form .field { display: flex; flex-direction: column; gap: 4px; min-width: 140px; flex: 1; }
+        .inline-form .field.wide { min-width: 260px; flex: 2; }
+        .inline-form label { font-size: 12px; color: #666; font-weight: bold; }
+        .inline-form input, .inline-form select, .inline-form textarea { padding: 7px 9px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; width: 100%; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; background: #e3f2fd; color: #1565c0; }
+        .badge.gray { background: #eceff1; color: #607d8b; }
+        .badge.green { background: #e8f5e9; color: #2e7d32; }
+        .badge.red { background: #ffebee; color: #c62828; }
+        /* ===== 情绪音频 ===== */
+        .emotion-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+        .emotion-card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px; background: #fff; }
+        .emotion-card h4 { margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .emotion-card audio { width: 100%; height: 36px; margin-bottom: 8px; }
+        .emotion-card textarea { width: 100%; min-height: 44px; border: 1px solid #ddd; border-radius: 4px; padding: 6px; font-size: 12px; resize: vertical; }
+        .emotion-card .card-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+        /* ===== 统计面板 ===== */
+        .stats-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .stat-card { background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .stat-card .num { font-size: 24px; font-weight: bold; color: #1e88e5; }
+        .stat-card .label { font-size: 12px; color: #888; margin-top: 4px; }
+        .chart-box { background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .chart-box h4 { margin-bottom: 10px; color: #444; }
+        .chart-box canvas { width: 100%; height: 260px; }
+        .perf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+        .perf-item { background: #f7f9fb; border-radius: 6px; padding: 10px; font-size: 13px; }
+        .perf-item b { display: block; font-size: 16px; color: #333; }
+        .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
+        .dot.on { background: #43a047; } .dot.off { background: #e53935; }
+        /* ===== 表情包 ===== */
+        .sticker-cat { margin-bottom: 18px; }
+        .sticker-cat h4 { margin-bottom: 8px; display: flex; gap: 10px; align-items: center; }
+        .sticker-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+        .sticker-thumb { position: relative; width: 86px; height: 86px; border: 1px solid #e0e0e0; border-radius: 6px; overflow: hidden; background: #fafafa; }
+        .sticker-thumb img { width: 100%; height: 100%; object-fit: cover; }
+        .sticker-thumb .del { position: absolute; top: 2px; right: 2px; background: rgba(244,67,54,0.9); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; padding: 1px 5px; }
+        .editor-form { background: #f7f9fb; border: 1px solid #cfd8dc; border-radius: 6px; padding: 14px; margin-bottom: 14px; display: none; }
+        .editor-form.active { display: block; }
+        .editor-form h4 { margin-bottom: 10px; }
+        .kv-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+        .kv-grid .field { display: flex; flex-direction: column; gap: 4px; min-width: 160px; flex: 1; }
+        .kv-grid .field.wide { min-width: 100%; }
+        .kv-grid label { font-size: 12px; color: #666; font-weight: bold; }
+        .kv-grid input, .kv-grid select, .kv-grid textarea { padding: 7px 9px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; width: 100%; }
+        .muted { color: #999; font-size: 12px; }
     </style>
 </head>
 <body>
@@ -83,6 +143,10 @@
         <div class="logo">控制台</div>
         <div class="menu-item active" data-panel="config">配置文件</div>
         <div class="menu-item" data-panel="chat">聊天记录</div>
+        <div class="menu-item" data-panel="audio">情绪音频</div>
+        <div class="menu-item" data-panel="tasks">定时任务</div>
+        <div class="menu-item" data-panel="stats">统计面板</div>
+        <div class="menu-item" data-panel="advanced">高级功能</div>
         <div class="menu-item" data-panel="logs">日志输出</div>
         <div class="menu-item" data-panel="tutorial">使用教程</div>
     </div>
@@ -91,9 +155,11 @@
             <div class="config-form">
                 <div id="config-message"></div>
                 <div id="config-groups"></div>
-                <!-- 修改为两个按钮 -->
                 <button class="save-btn" id="save-only-btn">仅保存</button>
                 <button class="save-btn-restart" id="save-restart-btn">保存并重启TTS</button>
+                <button class="btn btn-gray" id="export-config-btn" style="margin-left:10px;">导出配置</button>
+                <button class="btn btn-gray" id="import-config-btn" style="margin-left:10px;">导入配置</button>
+                <input type="file" id="import-config-file" accept=".json" style="display:none;">
             </div>
         </div>
         <div class="panel" id="panel-chat">
@@ -108,9 +174,126 @@
                 <button id="invertBtn" style="display:none;">反选</button>
                 <button id="viewBtn" style="display:none;">查看聊天记录</button>
                 <button id="deleteBtn" style="display:none;">删除选中</button>
+                <button id="exportAllBtn" class="btn btn-gray">导出全部记忆</button>
+                <button id="importMemoryBtn" class="btn btn-gray">导入记录</button>
+                <input type="file" id="importMemoryFile" accept=".json" multiple style="display:none;">
             </div>
             <div id="chat-message"></div>
             <div class="file-list" id="fileList"></div>
+        </div>
+        <div class="panel" id="panel-audio">
+            <div class="section-block">
+                <h3>情绪音频管理 <span class="muted" id="audio-root-path"></span></h3>
+                <div class="inline-form">
+                    <div class="field">
+                        <label>角色</label>
+                        <select id="audio-role-select"></select>
+                    </div>
+                    <div class="field">
+                        <label>新建情绪文件夹</label>
+                        <input type="text" id="new-emotion-name" placeholder="如 gaoxing / happy">
+                    </div>
+                    <div class="field" style="flex:0;">
+                        <button class="btn btn-green" id="create-emotion-btn">创建</button>
+                    </div>
+                </div>
+                <div id="audio-message" class="muted"></div>
+                <div class="emotion-grid" id="emotion-grid"></div>
+            </div>
+        </div>
+        <div class="panel" id="panel-tasks">
+            <div class="section-block">
+                <h3>定时任务（主动问候 / 例行消息）
+                    <button class="btn btn-green" id="add-job-btn">+ 新建任务</button>
+                </h3>
+                <div class="sub-desc">支持间隔、每日、每周触发；可发送固定话术或让 LLM 以角色身份生成内容。总开关见「配置文件 → 定时任务与主动消息」。</div>
+                <div id="job-message" class="muted"></div>
+                <div class="editor-form" id="job-editor"></div>
+                <div id="jobs-table-wrap"></div>
+            </div>
+            <div class="section-block">
+                <h3>节日 / 纪念日问候
+                    <button class="btn btn-green" id="add-event-btn">+ 新建事件</button>
+                </h3>
+                <div class="sub-desc">每天在配置的时刻（greeting_check_time）自动检查并发送；用户生日会从「用户画像」中自动读取。</div>
+                <div id="event-message" class="muted"></div>
+                <div class="editor-form" id="event-editor"></div>
+                <div id="events-table-wrap"></div>
+            </div>
+            <div class="section-block">
+                <h3>待办提醒</h3>
+                <div class="sub-desc">聊天中说出「提醒我…」即可自动创建（需在配置中开启待办功能）；此处可手动添加与管理。</div>
+                <div id="todo-message" class="muted"></div>
+                <div class="inline-form">
+                    <div class="field wide"><label>提醒内容</label><input type="text" id="todo-content" placeholder="要提醒的事项"></div>
+                    <div class="field"><label>提醒时间</label><input type="datetime-local" id="todo-time"></div>
+                    <div class="field"><label>会话类型</label>
+                        <select id="todo-session-type"><option value="private">私聊</option><option value="group">群聊</option></select>
+                    </div>
+                    <div class="field"><label>会话 ID (QQ号/群号)</label><input type="text" id="todo-session-id" list="session-list"></div>
+                    <datalist id="session-list"></datalist>
+                    <div class="field" style="flex:0;"><button class="btn btn-green" id="todo-add-btn">添加</button></div>
+                </div>
+                <div id="todos-table-wrap"></div>
+            </div>
+        </div>
+        <div class="panel" id="panel-stats">
+            <div class="section-block">
+                <h3>对话统计</h3>
+                <div class="stats-cards" id="stats-cards"></div>
+                <div class="chart-box"><h4>近 14 天消息量</h4><canvas id="chart-msgs" width="900" height="260"></canvas></div>
+                <div class="chart-box"><h4>情绪分布（近 30 天）</h4><canvas id="chart-emotions" width="900" height="260"></canvas></div>
+                <div class="chart-box"><h4>情绪趋势（近 14 天 · 前 5 种情绪）</h4><canvas id="chart-trend" width="900" height="260"></canvas></div>
+                <div id="stats-tables"></div>
+            </div>
+            <div class="section-block">
+                <h3>实时性能 <span class="muted" id="perf-refresh-at"></span></h3>
+                <div class="perf-grid" id="perf-grid"></div>
+            </div>
+        </div>
+        <div class="panel" id="panel-advanced">
+            <div class="section-block">
+                <h3>表情包</h3>
+                <div class="sub-desc">每个子文件夹是一种情绪分类（可与 LLM 输出的情绪名对应）；「default」为兜底、「any」为任意情绪都可能随机抽取。总开关与触发概率见「配置文件 → 表情包」。</div>
+                <div class="inline-form">
+                    <div class="field"><label>分类名</label><input type="text" id="sticker-category" placeholder="如 happy / gaoxing"></div>
+                    <div class="field"><label>选择图片（可多选）</label><input type="file" id="sticker-files" accept="image/*" multiple></div>
+                </div>
+                <div id="sticker-message" class="muted"></div>
+                <div id="stickers-wrap"></div>
+            </div>
+            <div class="section-block">
+                <h3>工具调用 (Function Calling)
+                    <button class="btn btn-green" id="add-tool-btn">+ 新建工具</button>
+                </h3>
+                <div class="sub-desc">LLM 可在回复时调用这些工具并把结果融入回答。总开关 tools_enabled 与命令类工具授权在「配置文件 → 工具调用」中。</div>
+                <div id="tool-message" class="muted"></div>
+                <div class="editor-form" id="tool-editor"></div>
+                <div id="tools-table-wrap"></div>
+            </div>
+            <div class="section-block">
+                <h3>知识库 RAG</h3>
+                <div class="sub-desc">上传文档后，角色回答时可自动检索相关内容注入上下文。需配置嵌入模型（默认 nomic-embed-text，可通过 ollama pull 获取）。总开关见「配置文件 → 知识库 RAG」。</div>
+                <div class="inline-form">
+                    <div class="field"><label>选择文档（txt/md/code/csv/json/pdf）</label><input type="file" id="rag-files" multiple></div>
+                </div>
+                <div id="rag-message" class="muted"></div>
+                <div id="rag-table-wrap"></div>
+                <div class="inline-form" style="margin-top:12px;">
+                    <div class="field wide"><label>检索测试</label><input type="text" id="rag-query" placeholder="输入问题测试检索效果"></div>
+                    <div class="field" style="flex:0;"><button class="btn" id="rag-query-btn">检索</button></div>
+                </div>
+                <div id="rag-query-result" class="muted"></div>
+            </div>
+            <div class="section-block">
+                <h3>用户画像
+                    <button class="btn btn-green" id="add-profile-btn">+ 新建画像</button>
+                </h3>
+                <div class="sub-desc">按 QQ 号记录用户偏好与生日；开启 profiles_auto_extract 后可由 LLM 自动从对话中提取。生日匹配当日时会自动送上祝福。</div>
+                <div id="profile-message" class="muted"></div>
+                <div class="editor-form" id="profile-editor"></div>
+                <div id="profiles-table-wrap"></div>
+            </div>
         </div>
         <div class="panel" id="panel-logs">
             <div class="log-container" id="log-content">加载日志中...</div>
@@ -118,11 +301,16 @@
         <div class="panel" id="panel-tutorial">
             <div class="tutorial">
                 <h2>使用教程</h2>
-                <p>欢迎使用LTVM。以下为基本操作说明：</p>
-                <p><strong>1. 配置文件</strong>：在左侧“配置文件”中可以修改所有机器人运行参数，修改后点击“保存配置”按钮即可生效。</p>
-                <p><strong>2. 聊天记录</strong>：查看和管理所有与bot的聊天记录。</p>
-                <p><strong>3. 日志输出</strong>：实时查看机器人运行日志。</p>
-                <p><strong>4. 使用教程</strong>：当前页面。</p>
+                <p>欢迎使用 LTVM。以下为各功能说明（所有功能均可在对应页面独立开关与配置）：</p>
+                <p><strong>1. 配置文件</strong>：修改所有运行参数；「功能开关」类配置分组可控制流式回复、主动消息、待办、表情包、多角色、工具调用、RAG、用户画像、动态上下文等功能的启停；支持配置的导入与导出。</p>
+                <p><strong>2. 聊天记录</strong>：查看、管理与删除会话；支持单会话导出 / 导入（JSON）以及一键打包导出全部记忆。</p>
+                <p><strong>3. 情绪音频</strong>：可视化上传/试听各情绪的参考音频与 asr.txt，可新建或删除情绪文件夹，保存后自动重扫。</p>
+                <p><strong>4. 定时任务</strong>：自定义定时问候（间隔/每日/每周）、节日与生日自动问候、待办提醒管理。</p>
+                <p><strong>5. 统计面板</strong>：消息量、情绪分布与趋势图表，实时性能监控（LLM/TTS 耗时、服务状态）。</p>
+                <p><strong>6. 高级功能</strong>：表情包管理、工具调用（Function Calling）、知识库 RAG、用户画像。</p>
+                <p><strong>7. 日志输出</strong>：实时查看机器人运行日志。</p>
+                <p><strong>8. 使用教程</strong>：当前页面。</p>
+                <p class="muted">提示：主动消息（长时间未互动自动开口）、待办提取、画像自动提取等功能的详细参数都在「配置文件」对应分组中；每个功能必须开启对应开关后才会生效。</p>
             </div>
         </div>
     </div>
@@ -149,6 +337,7 @@
         let memoriesData = [];
         let currentSort = 'role';
         let logTimer = null;
+        let perfTimer = null;
         let currentFilename = '';
         let currentChatHistory = [];
         let chatMultiMode = false;
@@ -156,13 +345,22 @@
 
         const configGroups = [
             { title: 'NapCat 连接', keys: ['napcat_ws_url', 'napcat_token'] },
-            { title: 'LLM 大模型', keys: ['llm_base_url', 'llm_model_name', 'num_ctx', 'history_length', 'enable_think', 'llm_timeout'] },
+            { title: 'LLM 大模型', keys: ['llm_backend', 'llm_base_url', 'llm_model_name', 'llm_api_key', 'num_ctx', 'history_length', 'enable_think', 'llm_timeout'] },
             { title: '识图模型', keys: ['image_caption_model_name', 'image_caption_timeout'] },
+            { title: '回复方式', keys: ['tts_reply_enabled', 'streaming_enabled'] },
             { title: 'TTS 基本配置', keys: ['client_base_url', 'model_dir', 'ref_audio_root', 'timeout_seconds', 'prompt_text', 'prompt_lang', 'text_lang', 'device'] },
             { title: 'TTS 高级参数', keys: ['top_k', 'top_p', 'temperature', 'text_split_method', 'batch_size', 'batch_threshold', 'split_bucket', 'speed_factor', 'fragment_interval', 'streaming_mode', 'seed', 'parallel_infer', 'repetition_penalty', 'media_type'] },
             { title: '发送与记忆', keys: ['max_voice_cache', 'isolated_session', 'separate_send', 'send_voice_separately', 'dynamic_sleep', 'text_separate', 'only_private'] },
-            { title: '情绪相关', keys: ['llm_judge', 'display_lang', 'default_voice', 'voice_transition', 'breathing_gap_ms', 'crossfade_ms', 'enable_default_emotions', 'llm_emotion_intensity', 'intensity_to_temperature', 'intensity_to_top_k', 'enable_time_awareness', 'summary_enabled', 'summary_threshold', 'summary_max_history'] },
-            { title: '自动启动 TTS', keys: ['auto_start_tts', 'tts_start_script', 'device'] },
+            { title: '情绪相关', keys: ['llm_judge', 'display_lang', 'default_voice', 'voice_transition', 'breathing_gap_ms', 'crossfade_ms', 'enable_default_emotions', 'llm_emotion_intensity', 'intensity_to_temperature', 'intensity_to_top_k'] },
+            { title: '定时任务与主动消息', keys: ['scheduler_enabled', 'proactive_enabled', 'proactive_idle_minutes', 'proactive_check_seconds', 'proactive_max_per_day', 'proactive_quiet_start', 'proactive_quiet_end', 'proactive_prompt', 'proactive_voice', 'proactive_sticker', 'greeting_events_enabled', 'greeting_check_time', 'birthday_greeting_enabled', 'birthday_greet_template', 'birthday_greet_mode', 'birthday_greet_voice'] },
+            { title: '待办提醒', keys: ['todo_enabled', 'todo_extract_mode', 'todo_voice', 'todo_remind_template', 'todo_keywords', 'todo_regex_patterns', 'todo_extract_prompt'] },
+            { title: '表情包', keys: ['stickers_enabled', 'stickers_dir', 'sticker_probability', 'sticker_max_per_reply', 'sticker_every_sentence'] },
+            { title: '多角色对话', keys: ['multi_role_enabled', 'multi_role_max_replies', 'multi_role_auto_rounds', 'multi_role_max_total'] },
+            { title: '工具调用', keys: ['tools_enabled', 'tools_allow_commands', 'tools_max_iterations'] },
+            { title: '知识库 RAG', keys: ['rag_enabled', 'rag_embedding_model', 'rag_chunk_size', 'rag_chunk_overlap', 'rag_top_k', 'rag_min_similarity', 'rag_max_context_chars'] },
+            { title: '用户画像', keys: ['profiles_enabled', 'profiles_auto_extract', 'profiles_max_chars', 'profiles_inject_template'] },
+            { title: '动态上下文', keys: ['enable_time_awareness', 'summary_enabled', 'summary_threshold', 'summary_max_history', 'summary_prompt', 'dynamic_context_enabled', 'topic_summary_every_n', 'topic_summary_prompt'] },
+            { title: '自动启动 TTS', keys: ['auto_start_tts', 'tts_start_script'] },
             { title: 'WebUI 设置', keys: ['webui_enabled', 'webui_host', 'webui_port'] },
             { title: '其他', keys: ['active_character', 'hide_gsv_options'] }
         ];
@@ -172,6 +370,8 @@
             'napcat_ws_url': { label: 'NapCat WebSocket 地址', description: 'NapCat 服务的 WebSocket 连接地址', hint: '默认为 ws://127.0.0.1:3001', required: true, type: 'string' },
             'napcat_token': { label: 'NapCat Token', description: 'NapCat 服务的访问令牌', hint: '如果 NapCat 设置了 Token，请填写；否则留空', required: false, type: 'string' },
             'hide_gsv_options': { label: '隐藏高级 GSV 参数', description: '【配好参数后可选】隐藏高级 GSV 参数', hint: '开启后，将隐藏大部分 GPT-SoVITS 推理细节参数，简化配置界面。', required: false, type: 'boolean', default: false },
+            'llm_backend': { label: 'LLM 接口类型', description: '选择 LLM 后端接口类型', hint: 'ollama：Ollama 原生接口；openai：OpenAI 兼容接口（LM Studio / vLLM / 各类云 API 等）。', required: false, type: 'string', options: ['ollama', 'openai'], default: 'ollama' },
+            'llm_api_key': { label: 'LLM API Key', description: 'OpenAI 兼容接口的密钥', hint: '仅 openai 接口类型需要；本地服务可留空。', required: false, type: 'string' },
             'llm_model_name': { label: '大语言模型 (LLM) 名称', description: '【必填】大语言模型 (LLM) 名称', hint: '请填写本地 Ollama 中已部署的模型名称（可通过命令行 ollama list 查看）。', required: true, type: 'string' },
             'image_caption_model_name': { label: '识图模型名称', description: '【可选】识图模型名称', hint: '用于处理图片，接收图片并输出JSON。留空则遇到图片时直接跳过。', required: false, type: 'string' },
             'llm_base_url': { label: 'LLM 服务地址', description: 'LLM服务地址', hint: 'Ollama 默认为 http://127.0.0.1:11434。', required: true, type: 'string', options: ['http://127.0.0.1:11434', 'http://127.0.0.1:1234/v1', 'http://127.0.0.1:8000/v1'], default: 'http://127.0.0.1:11434' },
@@ -180,6 +380,8 @@
             'enable_think': { label: '启用深度思考', description: '开启深度思考', hint: '开启后，模型会在回答前先内部推理。注意：会让响应变慢。', required: false, type: 'boolean', default: false },
             'llm_timeout': { label: 'LLM 请求超时（秒）', description: '大模型请求超时时间', hint: '单位秒。默认120秒。', required: false, type: 'int', default: 120 },
             'image_caption_timeout': { label: '识图模型请求超时（秒）', description: '识图模型请求超时时间（秒）', hint: '单位秒。识图模型推理较慢，建议 60 秒以上。', required: false, type: 'int', default: 90 },
+            'tts_reply_enabled': { label: '回复附带语音', description: '关闭后所有回复只发文字不发语音', hint: 'TTS 故障排查或纯文字场景可关闭。', required: false, type: 'boolean', default: true },
+            'streaming_enabled': { label: '实时流式回复', description: '边生成边逐句合成并发送，大幅降低等待时间', hint: '开启后每句话生成完毕立即合成发送，无需等整段回复完成。需要模型支持流式输出（Ollama / OpenAI 均支持）。', required: false, type: 'boolean', default: false },
             'client_base_url': { label: 'GPT-SoVITS 服务地址', description: 'GPT-SoVITS 服务地址', hint: '默认为 http://127.0.0.1:9880', required: true, type: 'string', condition: { hide_gsv_options: false }, default: 'http://127.0.0.1:9880' },
             'model_dir': { label: '模型文件夹路径', description: '【必填】模型文件夹所在路径', hint: '存放 .ckpt 和 .pth 的文件夹路径', required: true, type: 'string', condition: { hide_gsv_options: false } },
             'ref_audio_root': { label: '参考音频根目录', description: '【必填】参考音频根目录', hint: '填有所有语气的文件夹路径即可。', required: true, type: 'string', condition: { hide_gsv_options: false } },
@@ -196,7 +398,7 @@
             'split_bucket': { label: '分桶处理', description: '将文本分割成桶', hint: '是否开启分桶处理。', required: false, type: 'boolean', condition: { hide_gsv_options: false }, default: true },
             'speed_factor': { label: '语速倍数', description: '语音播放速度', hint: '1 为原始语速，可微调。', required: false, type: 'float', condition: { hide_gsv_options: false }, default: 1.0 },
             'fragment_interval': { label: '片段间隔（秒）', description: '语音片段之间的间隔时间', hint: '不同语音片段间的间隔秒数。', required: false, type: 'float', condition: { hide_gsv_options: false }, default: 0.5 },
-            'streaming_mode': { label: '流式模式', description: '启用流模式', hint: '建议关闭以保证完整单条音频输出。', required: false, type: 'boolean', condition: { hide_gsv_options: false }, default: false },
+            'streaming_mode': { label: 'TTS 流式模式', description: 'GPT-SoVITS 流式推理', hint: '建议关闭以保证完整单条音频输出。', required: false, type: 'boolean', condition: { hide_gsv_options: false }, default: false },
             'seed': { label: '随机种子', description: '随机种子', hint: '设置固定种子可复现结果，-1 为完全随机。', required: false, type: 'int', condition: { hide_gsv_options: false }, default: -1 },
             'parallel_infer': { label: '并行推理', description: '并行执行推理', hint: '建议开启以加速合成。', required: false, type: 'boolean', condition: { hide_gsv_options: false }, default: true },
             'repetition_penalty': { label: '重复惩罚', description: '重复惩罚因子', hint: '数值越大越不容易重复字词。', required: false, type: 'float', condition: { hide_gsv_options: false }, default: 1.35 },
@@ -207,7 +409,7 @@
             'send_voice_separately': { label: '语音分开发送', description: '语音分开发送', hint: '开启后，每句话将单独作为一条语音消息发送。（QQ官方平台受限，建议关闭）', required: false, type: 'boolean', condition: { separate_send: true }, default: false },
             'dynamic_sleep': { label: '动态等待', description: '根据语音时长动态等待', hint: '开启后，分开发送时会根据音频实际时长动态等待。', required: false, type: 'boolean', condition: { send_voice_separately: true }, default: true },
             'text_separate': { label: '文本分开发送', description: '文本分开发送', hint: '开启后，在语音合并发送的前提下，文本将按句逐条发送。', required: false, type: 'boolean', condition: { separate_send: true }, default: false },
-            'only_private': { label: '仅响应私聊', description: '仅响应私聊', hint: '开启后，插件只会响应私聊消息。', required: false, type: 'boolean', default: false },
+            'only_private': { label: '仅响应私聊', description: '仅响应私聊', hint: '开启后，群聊仅在被@时响应。', required: false, type: 'boolean', default: false },
             'auto_start_tts': { label: '自动启动 TTS 服务', description: '【推荐开启】一键启动本地 TTS 服务', hint: '开启后，插件会自动检测后台服务是否在线并自动启动。', required: false, type: 'boolean', default: true },
             'tts_start_script': { label: 'TTS 启动脚本路径', description: '【必填】TTS 后端启动命令', hint: '填写 api_v2.py 当前所在的文件夹路径即可。', required: true, type: 'string', condition: { auto_start_tts: true } },
             'device': { label: 'TTS 合成设备', description: 'TTS 合成设备', hint: '选择 CUDA 使用显卡（GPU），选择 CPU 使用处理器。', required: false, type: 'string', options: ['cuda', 'cpu'], condition: { auto_start_tts: true }, default: 'cuda' },
@@ -221,10 +423,68 @@
             'llm_emotion_intensity': { label: '允许 LLM 自动判断情绪强度', description: '开启后，AI 会为每句话评估一个 0~1 的情绪强烈程度，插件会自动调整语音的随机性和音色丰富度。', hint: '关闭则所有句子使用相同的语音变化幅度。', required: false, type: 'boolean', default: true },
             'intensity_to_temperature': { label: '情绪强度对语音变化幅度的影响', description: '当 LLM 判断某句话情绪越强烈时，语音的随机性会适当增加。', hint: '建议保持默认 0.3，如感觉语音过于平淡可略微调高。', required: false, type: 'float', condition: { llm_emotion_intensity: true }, default: 0.3 },
             'intensity_to_top_k': { label: '情绪强度对语音音色丰富度的影响', description: '情绪越强烈，语音合成时会从更多的候选音色中挑选，使语气变化更丰富。', hint: '建议保持默认 10，如感觉声音不稳定可适当调低。', required: false, type: 'float', condition: { llm_emotion_intensity: true }, default: 10.0 },
-            'enable_time_awareness': { label: '现实时间感知', description: '开启后，会将当前时间告知 LLM 模型，使其了解现实时间。', hint: '(时间使用运行 AstrBot 的服务器本地时间，时区由系统决定。)', required: false, type: 'boolean', default: false },
-            'summary_enabled': { label: '开启对话上下文自动摘要', description: '开启后回复会变慢几秒。当历史消息超过阈值时，自动调用LLM对旧对话进行摘要。', hint: '压缩上下文长度，避免遗忘和降智。', required: false, type: 'boolean', default: true },
+            /* ===== 定时任务与主动消息 ===== */
+            'scheduler_enabled': { label: '定时任务总开关', description: '开启后自定义定时任务与问候检查才会运行', hint: '任务列表在「定时任务」页面管理。', required: false, type: 'boolean', default: true },
+            'proactive_enabled': { label: '主动消息（闲置唤醒）', description: '长时间未互动时主动开口找话题', hint: '仅对程序运行期间活跃过的会话生效。', required: false, type: 'boolean', default: false },
+            'proactive_idle_minutes': { label: '闲置阈值（分钟）', description: '超过该时长未互动即视为闲置', hint: '默认 30 分钟。', required: false, type: 'int', default: 30 },
+            'proactive_check_seconds': { label: '检查间隔（秒）', description: '每隔多少秒检查一次闲置会话', hint: '默认 300 秒。', required: false, type: 'int', default: 300 },
+            'proactive_max_per_day': { label: '单会话每日上限', description: '每个会话每天最多主动消息次数', hint: '默认 2 次，防止打扰。', required: false, type: 'int', default: 2 },
+            'proactive_quiet_start': { label: '静默时段开始', description: '该时段内不发送主动消息', hint: '格式 HH:MM，默认 23:00。', required: false, type: 'string', default: '23:00' },
+            'proactive_quiet_end': { label: '静默时段结束', description: '静默时段结束时间', hint: '格式 HH:MM，默认 08:00（支持跨零点）。', required: false, type: 'string', default: '08:00' },
+            'proactive_prompt': { label: '主动开场白指令', description: '让 LLM 生成开场白时的指令', hint: '告诉模型在什么情境下说什么。', required: false, type: 'text' },
+            'proactive_voice': { label: '主动消息附带语音', description: '主动消息是否合成语音', hint: '需要 TTS 服务在线。', required: false, type: 'boolean', default: false },
+            'proactive_sticker': { label: '主动消息附带表情包', description: '发送主动消息时随机附带一张表情', hint: '需开启表情包功能并有可用图片。', required: false, type: 'boolean', default: false },
+            'greeting_events_enabled': { label: '节日/纪念日问候', description: '按日期自动发送节日问候', hint: '事件列表在「定时任务」页面管理。', required: false, type: 'boolean', default: true },
+            'greeting_check_time': { label: '问候检查时刻', description: '每天几点检查节日与生日', hint: '格式 HH:MM，默认 08:00。', required: false, type: 'string', default: '08:00' },
+            'birthday_greeting_enabled': { label: '用户生日自动祝福', description: '根据用户画像中的生日自动送上祝福', hint: '生日在「高级功能 → 用户画像」中维护。', required: false, type: 'boolean', default: true },
+            'birthday_greet_template': { label: '生日祝福话术', description: '生日祝福模板，支持 {nickname} 占位符', hint: '模式为 llm 时作为生成指令使用。', required: false, type: 'text' },
+            'birthday_greet_mode': { label: '生日祝福模式', description: 'template=直接发送话术；llm=由角色生成', hint: 'llm 模式下话术作为生成指令。', required: false, type: 'string', options: ['template', 'llm'], default: 'template' },
+            'birthday_greet_voice': { label: '生日祝福附带语音', description: '生日祝福是否合成语音', hint: '需要 TTS 服务在线。', required: false, type: 'boolean', default: false },
+            /* ===== 待办提醒 ===== */
+            'todo_enabled': { label: '待办提醒功能', description: '从聊天中提取提醒事项并到点发送提醒', hint: '提取方式见下一项。', required: false, type: 'boolean', default: false },
+            'todo_extract_mode': { label: '待办提取方式', description: 'regex=正则匹配（快）；llm=大模型提取（准）；off=仅手动添加', hint: 'llm 模式仅在消息包含关键词时触发。', required: false, type: 'string', options: ['regex', 'llm', 'off'], default: 'regex' },
+            'todo_voice': { label: '提醒附带语音', description: '提醒消息是否合成语音', hint: '需要 TTS 服务在线。', required: false, type: 'boolean', default: false },
+            'todo_remind_template': { label: '提醒话术模板', description: '到点发送的提醒内容模板，{content} 为事项', hint: '默认：⏰ 提醒时间到啦：{content}', required: false, type: 'string' },
+            'todo_keywords': { label: '触发关键词（每行一个）', description: '消息包含任一关键词才尝试提取待办', hint: '留空则对所有消息尝试提取（不推荐）。', required: false, type: 'text' },
+            'todo_regex_patterns': { label: '待办正则（每行一个）', description: '每个正则需包含两个捕获组：第1组=时间表达式，第2组=事项内容', hint: '支持 “X分钟后 / X小时后 / HH:MM / 明天HH点MM分” 等写法。', required: false, type: 'text' },
+            'todo_extract_prompt': { label: 'LLM 提取提示词', description: 'llm 提取方式使用的提示词', hint: '要求模型输出 JSON：has_todo/content/delay_minutes/time。', required: false, type: 'text' },
+            /* ===== 表情包 ===== */
+            'stickers_enabled': { label: '表情包功能', description: '按情绪随机附带表情图片', hint: '图片在「高级功能 → 表情包」中上传管理。', required: false, type: 'boolean', default: false },
+            'stickers_dir': { label: '表情包目录', description: '表情图片根目录', hint: '留空使用 data/stickers；每个子文件夹为一种情绪分类。', required: false, type: 'string' },
+            'sticker_probability': { label: '表情包触发概率', description: '0~1，每次回复附带表情的概率', hint: '默认 1.0（每次都带）。', required: false, type: 'float', default: 1.0 },
+            'sticker_max_per_reply': { label: '单次回复最多表情数', description: '限制一次回复附带表情的数量', hint: '当前每回复最多 1 张，默认即 1。', required: false, type: 'int', default: 1 },
+            'sticker_every_sentence': { label: '逐句附带表情', description: '语音逐句发送时每句都可能带表情', hint: '仅在「语音分开发送」模式下生效。', required: false, type: 'boolean', default: false },
+            /* ===== 多角色 ===== */
+            'multi_role_enabled': { label: '多角色对话', description: '群聊中 @ 或提及角色名时由对应角色回复', hint: '每个角色使用独立的人设与语音配置（在多角色配置中维护）。', required: false, type: 'boolean', default: false },
+            'multi_role_max_replies': { label: '单条消息最多角色回复数', description: '一次@多个角色时最多几个角色依次回复', hint: '默认 2。', required: false, type: 'int', default: 2 },
+            'multi_role_auto_rounds': { label: '角色互动轮数', description: '角色回复后互相接话的轮数', hint: '默认 0（关闭）。建议 1~2，过大可能刷屏。', required: false, type: 'int', default: 0 },
+            'multi_role_max_total': { label: '单条消息总回复上限', description: '含角色互动在内一次消息最多产生的回复总数', hint: '默认 6，防止刷屏。', required: false, type: 'int', default: 6 },
+            /* ===== 工具调用 ===== */
+            'tools_enabled': { label: '工具调用 (Function Calling)', description: '允许 LLM 调用外部工具并将结果融入回复', hint: '工具列表在「高级功能 → 工具调用」中管理，每个工具可单独启用与授权。', required: false, type: 'boolean', default: false },
+            'tools_allow_commands': { label: '允许命令类工具', description: '是否允许执行自定义命令行工具（高风险）', hint: '仅在你完全理解工具定义内容时开启。', required: false, type: 'boolean', default: false },
+            'tools_max_iterations': { label: '工具调用最大轮数', description: '单次回复中 LLM 最多连续调用工具的轮数', hint: '默认 3 轮。', required: false, type: 'int', default: 3 },
+            /* ===== RAG ===== */
+            'rag_enabled': { label: '知识库 RAG', description: '回答前自动检索本地知识库并注入相关内容', hint: '文档在「高级功能 → 知识库 RAG」中上传。', required: false, type: 'boolean', default: false },
+            'rag_embedding_model': { label: '嵌入模型名称', description: '用于向量化的模型', hint: 'Ollama 可先执行 ollama pull nomic-embed-text。', required: false, type: 'string', default: 'nomic-embed-text' },
+            'rag_chunk_size': { label: '分块大小（字符）', description: '文档切分的块大小', hint: '默认 500 字符。', required: false, type: 'int', default: 500 },
+            'rag_chunk_overlap': { label: '分块重叠（字符）', description: '相邻块重叠字符数', hint: '默认 80。', required: false, type: 'int', default: 80 },
+            'rag_top_k': { label: '检索条数', description: '每次检索返回的最相关片段数', hint: '默认 3。', required: false, type: 'int', default: 3 },
+            'rag_min_similarity': { label: '最低相关度', description: '低于该相似度的片段不注入', hint: '0~1，默认 0.35。', required: false, type: 'float', default: 0.35 },
+            'rag_max_context_chars': { label: '注入上下文最大长度', description: '参考资料注入提示词的最大字符数', hint: '默认 1000。', required: false, type: 'int', default: 1000 },
+            /* ===== 用户画像 ===== */
+            'profiles_enabled': { label: '用户画像', description: '按用户记录偏好并在对话中注入', hint: '数据在「高级功能 → 用户画像」中查看编辑。', required: false, type: 'boolean', default: false },
+            'profiles_auto_extract': { label: '画像自动提取', description: '对话后由 LLM 自动提取用户信息', hint: '每次回复后会额外进行一次轻量 LLM 调用。', required: false, type: 'boolean', default: false },
+            'profiles_max_chars': { label: '画像注入最大长度', description: '注入提示词的画像文本最大字符数', hint: '默认 300。', required: false, type: 'int', default: 300 },
+            'profiles_inject_template': { label: '画像注入模板', description: '注入系统提示词的模板，{profile} 为画像内容', hint: '默认：【用户画像】关于当前用户的已知信息：{profile}', required: false, type: 'text' },
+            /* ===== 动态上下文 ===== */
+            'enable_time_awareness': { label: '现实时间感知', description: '开启后，会将当前时间告知 LLM 模型，使其了解现实时间。', hint: '(时间使用运行本程序的计算机本地时间，时区由系统决定。)', required: false, type: 'boolean', default: false },
+            'summary_enabled': { label: '对话上下文自动摘要', description: '当历史消息超过阈值时，自动调用LLM对旧对话进行摘要。', hint: '压缩上下文长度，避免遗忘和降智。回复会变慢几秒。', required: false, type: 'boolean', default: true },
             'summary_threshold': { label: '触发摘要的历史消息条数', description: '当历史消息总数超过此值时，将旧消息摘要。', hint: '建议10-20条。', required: false, type: 'int', default: 20 },
             'summary_max_history': { label: '摘要后保留的最近消息条数', description: '摘要后仅保留最近这几条详细消息，其余用摘要替代。', hint: '建议3-5条。', required: false, type: 'int', default: 5 },
+            'summary_prompt': { label: '摘要提示词', description: '生成上下文摘要使用的指令', hint: '要求输出第三人称简短摘要。', required: false, type: 'text' },
+            'dynamic_context_enabled': { label: '话题检测', description: '定期总结当前话题并注入上下文', hint: '结合摘要功能，让角色“记得最近在聊什么”。', required: false, type: 'boolean', default: false },
+            'topic_summary_every_n': { label: '话题检测频率（每 N 条用户消息）', description: '每隔多少条用户消息更新一次话题', hint: '默认 10。', required: false, type: 'int', default: 10 },
+            'topic_summary_prompt': { label: '话题检测提示词', description: '生成当前话题总结使用的指令', hint: '要求输出一句话话题。', required: false, type: 'text' },
             'webui_enabled': { label: '启用 WebUI', description: '是否启用 WebUI 管理界面', hint: '开启后可通过浏览器访问管理界面。', required: false, type: 'boolean', default: true },
             'webui_host': { label: 'WebUI 主机地址', description: 'WebUI 监听地址', hint: '默认 127.0.0.1 仅本机可访问。', required: false, type: 'string', condition: { webui_enabled: true }, default: '127.0.0.1' },
             'webui_port': { label: 'WebUI 端口', description: 'WebUI 端口号', hint: '默认 11500，请确保端口未被占用。', required: false, type: 'int', condition: { webui_enabled: true }, default: 11500 }
@@ -244,6 +504,20 @@
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             return await resp.json();
         }
+        async function apiPostForm(path, formData) {
+            const resp = await fetch(`${API_BASE}/${path}`, { method: 'POST', body: formData });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return await resp.json();
+        }
+        function fmtTs(ts) {
+            if (!ts) return '-';
+            const d = new Date(ts * 1000);
+            const p = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+        }
+        function esc(s) {
+            return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
 
         document.querySelectorAll('.sidebar .menu-item').forEach(item => {
             item.addEventListener('click', () => {
@@ -254,8 +528,13 @@
                 document.getElementById(`panel-${panelId}`).classList.add('active');
                 if (panelId === 'config') loadConfig();
                 if (panelId === 'chat') loadChatList();
+                if (panelId === 'audio') loadAudioPage();
+                if (panelId === 'tasks') loadTasksPage();
+                if (panelId === 'stats') loadStatsPage();
+                if (panelId === 'advanced') loadAdvancedPage();
                 if (panelId === 'logs') startLogPolling();
                 else stopLogPolling();
+                if (panelId !== 'stats') stopPerfPolling();
             });
         });
 
@@ -335,6 +614,8 @@
                         if (meta.type === 'int' || meta.type === 'float') {
                             input.type = 'number';
                             if (meta.type === 'float') input.step = 'any';
+                        } else if (meta.type === 'password') {
+                            input.type = 'password';
                         } else {
                             input.type = 'text';
                         }
@@ -361,6 +642,7 @@
             container.className = 'config-group';
             container.innerHTML = `
                 <h3>多角色配置 <button id="addRoleBtn" class="btn" style="float:right;">+ 添加条目</button></h3>
+                <div class="sub-desc" style="font-size:12px;color:#888;margin-bottom:8px;">每个角色可配置独立的人设、提示词、语音目录与默认情绪；开启「多角色对话」后群聊中提及角色名即可由对应角色回复。</div>
                 <div id="roles-container"></div>
             `;
             const configGroupsDiv = document.getElementById('config-groups');
@@ -374,52 +656,39 @@
                         <summary>角色条目 ${index + 1} <button class="btn delete-role-btn" style="background:#f44336; color:white; float:right; margin-left:10px;">删除</button></summary>
                         <div class="form-row">
                             <label>角色名称 (character_name)</label>
-                            <div class="field-wrapper"><input type="text" data-role-key="character_name" value="${role.character_name || ''}"></div>
+                            <div class="field-wrapper"><input type="text" data-role-key="character_name" value="${esc(role.character_name || '')}"></div>
                         </div>
                         <div class="form-row">
                             <label>角色标识符 (character_key)</label>
-                            <div class="field-wrapper"><input type="text" data-role-key="character_key" value="${role.character_key || ''}"></div>
+                            <div class="field-wrapper"><input type="text" data-role-key="character_key" value="${esc(role.character_key || '')}"></div>
                         </div>
                         <div class="form-row">
                             <label>人格提示词 (personality_prompt)</label>
-                            <div class="field-wrapper"><textarea data-role-key="personality_prompt" style="min-height:80px;">${role.personality_prompt || ''}</textarea></div>
+                            <div class="field-wrapper"><textarea data-role-key="personality_prompt" style="min-height:80px;">${esc(role.personality_prompt || '')}</textarea></div>
                         </div>
                         <div class="form-row">
                             <label>JSON输出提示词 (json_prompt)</label>
-                            <div class="field-wrapper"><textarea data-role-key="json_prompt" style="min-height:80px;">${role.json_prompt || ''}</textarea></div>
+                            <div class="field-wrapper"><textarea data-role-key="json_prompt" style="min-height:80px;">${esc(role.json_prompt || '')}</textarea></div>
                         </div>
                         <div class="form-row">
                             <label>补充提示词 (supplement_prompt)</label>
-                            <div class="field-wrapper"><textarea data-role-key="supplement_prompt" style="min-height:60px;">${role.supplement_prompt || ''}</textarea></div>
+                            <div class="field-wrapper"><textarea data-role-key="supplement_prompt" style="min-height:60px;">${esc(role.supplement_prompt || '')}</textarea></div>
                         </div>
                         <div class="form-row">
                             <label>默认情绪 (default_voice)</label>
-                            <div class="field-wrapper"><input type="text" data-role-key="default_voice" value="${role.default_voice || 'pingjing'}"></div>
+                            <div class="field-wrapper"><input type="text" data-role-key="default_voice" value="${esc(role.default_voice || 'pingjing')}"></div>
                         </div>
                         <div class="form-row">
                             <label>语气文件夹根目录 (ref_audio_root)</label>
-                            <div class="field-wrapper"><input type="text" data-role-key="ref_audio_root" value="${role.ref_audio_root || ''}"></div>
+                            <div class="field-wrapper"><input type="text" data-role-key="ref_audio_root" value="${esc(role.ref_audio_root || '')}"></div>
                         </div>
                         <div class="form-row">
                             <label>文本语言 (text_lang)</label>
-                            <div class="field-wrapper"><input type="text" data-role-key="text_lang" value="${role.text_lang || 'ja'}"></div>
+                            <div class="field-wrapper"><input type="text" data-role-key="text_lang" value="${esc(role.text_lang || 'ja')}"></div>
                         </div>
                     </details>
                 `;
                 return roleDiv;
-            }
-
-            function collectRoles() {
-                const roleEls = document.querySelectorAll('.role-item');
-                const roles = [];
-                roleEls.forEach((el) => {
-                    const role = {};
-                    el.querySelectorAll('[data-role-key]').forEach(input => {
-                        role[input.dataset.roleKey] = input.value;
-                    });
-                    roles.push(role);
-                });
-                return roles;
             }
 
             document.getElementById('addRoleBtn').addEventListener('click', () => {
@@ -495,7 +764,6 @@
             setTimeout(() => msgDiv.textContent = '', 5000);
         }
 
-        // 通用收集配置逻辑
         async function saveConfig(restart_tts = false) {
             try {
                 const roles = [];
@@ -507,7 +775,7 @@
                     roles.push(role);
                 });
                 const activeKey = document.querySelector('[data-key="active_character"]')?.value || 'murasame';
-                
+
                 const formData = {};
                 document.querySelectorAll('#config-groups [data-key]').forEach(el => {
                     const key = el.dataset.key;
@@ -517,7 +785,7 @@
                 });
                 formData['roles'] = roles;
                 formData['active_character'] = activeKey;
-                formData['restart_tts'] = restart_tts; // 传递给后端的控制信号
+                formData['restart_tts'] = restart_tts;
 
                 await apiPost('api/config/save', formData);
                 showConfigMessage(restart_tts ? '配置保存成功，TTS 服务正在重启！' : '配置保存成功！', 'success');
@@ -526,17 +794,30 @@
             }
         }
 
-        // 绑定“仅保存”按钮
-        document.getElementById('save-only-btn').addEventListener('click', () => {
-            saveConfig(false);
+        document.getElementById('save-only-btn').addEventListener('click', () => saveConfig(false));
+        document.getElementById('save-restart-btn').addEventListener('click', () => saveConfig(true));
+        document.getElementById('export-config-btn').addEventListener('click', () => {
+            window.open(`${API_BASE}/api/config/export`);
+        });
+        document.getElementById('import-config-btn').addEventListener('click', () => {
+            document.getElementById('import-config-file').click();
+        });
+        document.getElementById('import-config-file').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const fd = new FormData();
+            fd.append('file', file);
+            try {
+                const r = await apiPostForm('api/config/import', fd);
+                showConfigMessage(r.message || '导入成功', 'success');
+                loadConfig();
+            } catch (err) {
+                showConfigMessage('导入失败: ' + err.message, 'error');
+            }
+            e.target.value = '';
         });
 
-        // 绑定“保存并重启TTS”按钮
-        document.getElementById('save-restart-btn').addEventListener('click', () => {
-            saveConfig(true);
-        });
-
-        // 其余聊天记录、日志功能保持不变
+        /* ==================== 聊天记录 ==================== */
         const chatMsgDiv = document.getElementById('chat-message');
         function showChatMessage(text, isError = false) {
             chatMsgDiv.style.color = isError ? 'red' : 'green';
@@ -588,12 +869,16 @@
                 item.innerHTML = `
                     <div class="checkbox"></div>
                     <div class="file-info">
-                        <div class="file-name">${mainTitle}</div>
-                        <div class="last-msg">${mem.last_sentence || '（暂无对话）'}</div>
+                        <div class="file-name">${esc(mainTitle)}</div>
+                        <div class="last-msg">${esc(mem.last_sentence || '（暂无对话）')}</div>
                     </div>
-                    <div class="file-subname">${mem.filename}</div>
+                    <div class="file-actions">
+                        <button class="btn btn-gray export-one-btn" data-filename="${esc(mem.filename)}">导出</button>
+                    </div>
+                    <div class="file-subname">${esc(mem.filename)}</div>
                 `;
-                item.addEventListener('click', () => {
+                item.addEventListener('click', (ev) => {
+                    if (ev.target.classList.contains('export-one-btn')) return;
                     const filename = mem.filename;
                     if (isMultiSelect) {
                         if (selectedFiles.has(filename)) selectedFiles.delete(filename);
@@ -611,6 +896,10 @@
                         renderFileList();
                         openChatDetail(mem.filename);
                     }
+                });
+                item.querySelector('.export-one-btn').addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    window.open(`${API_BASE}/api/memory/export?filename=${encodeURIComponent(mem.filename)}`);
                 });
                 list.appendChild(item);
             });
@@ -672,6 +961,26 @@
             const filename = Array.from(selectedFiles)[0];
             openChatDetail(filename);
         });
+        document.getElementById('exportAllBtn').addEventListener('click', () => {
+            window.open(`${API_BASE}/api/memory/export_all`);
+        });
+        document.getElementById('importMemoryBtn').addEventListener('click', () => {
+            document.getElementById('importMemoryFile').click();
+        });
+        document.getElementById('importMemoryFile').addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files || []);
+            if (!files.length) return;
+            const fd = new FormData();
+            files.forEach(f => fd.append('files', f));
+            try {
+                const r = await apiPostForm('api/memory/import', fd);
+                showChatMessage(`导入成功 ${r.imported.length} 个文件`);
+                loadChatList();
+            } catch (err) {
+                showChatMessage('导入失败: ' + err.message, true);
+            }
+            e.target.value = '';
+        });
 
         async function openChatDetail(filename) {
             currentFilename = filename;
@@ -704,10 +1013,14 @@
                 checkbox.className = 'msg-checkbox';
                 checkbox.dataset.index = idx;
                 row.appendChild(checkbox);
-                if (msg.role === 'user' && msg.sender_name) {
+                const nameParts = [];
+                if (msg.role === 'user' && msg.sender_name) nameParts.push(msg.sender_name);
+                if (msg.speaker) nameParts.push(msg.speaker);
+                if (msg.proactive) nameParts.push('(主动消息)');
+                if (nameParts.length) {
                     const name = document.createElement('div');
                     name.className = 'sender-name';
-                    name.textContent = msg.sender_name;
+                    name.textContent = nameParts.join(' · ');
                     row.appendChild(name);
                 }
                 const bubble = document.createElement('div');
@@ -795,6 +1108,985 @@
             }
         });
 
+        /* ==================== 情绪音频管理 ==================== */
+        let audioRoles = [];
+        function showAudioMsg(text, isError = false) {
+            const el = document.getElementById('audio-message');
+            el.style.color = isError ? 'red' : 'green';
+            el.textContent = text;
+            setTimeout(() => el.textContent = '', 5000);
+        }
+
+        async function loadAudioPage() {
+            try {
+                const data = await apiGet('api/roles');
+                audioRoles = data.roles || [];
+                const sel = document.getElementById('audio-role-select');
+                sel.innerHTML = '';
+                audioRoles.forEach(r => {
+                    const opt = document.createElement('option');
+                    opt.value = r.character_key;
+                    opt.textContent = r.character_name + (r.active ? '（当前）' : '');
+                    if (r.active) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+                if (audioRoles.length) loadEmotions();
+                else document.getElementById('emotion-grid').innerHTML = '<div class="muted">尚未配置任何角色。</div>';
+            } catch (e) {
+                showAudioMsg('加载角色失败: ' + e.message, true);
+            }
+        }
+
+        document.getElementById('audio-role-select').addEventListener('change', loadEmotions);
+        document.getElementById('create-emotion-btn').addEventListener('click', async () => {
+            const role = document.getElementById('audio-role-select').value;
+            const name = document.getElementById('new-emotion-name').value.trim();
+            if (!name) { showAudioMsg('请输入情绪文件夹名称', true); return; }
+            try {
+                await apiPost('api/emotions/create', { role, emotion: name });
+                document.getElementById('new-emotion-name').value = '';
+                showAudioMsg('已创建情绪文件夹：' + name);
+                loadEmotions();
+            } catch (e) {
+                showAudioMsg('创建失败: ' + e.message, true);
+            }
+        });
+
+        async function loadEmotions() {
+            const role = document.getElementById('audio-role-select').value;
+            try {
+                const data = await apiGet(`api/emotions/list?role=${encodeURIComponent(role)}`);
+                document.getElementById('audio-root-path').textContent = '目录：' + data.root;
+                const grid = document.getElementById('emotion-grid');
+                grid.innerHTML = '';
+                (data.emotions || []).forEach(em => {
+                    const card = document.createElement('div');
+                    card.className = 'emotion-card';
+                    const audioHtml = em.ref
+                        ? `<audio controls preload="none" src="api/emotions/audio?role=${encodeURIComponent(role)}&emotion=${encodeURIComponent(em.name)}&file=${encodeURIComponent(em.ref)}"></audio>`
+                        : '<div class="muted">⚠️ 未找到参考音频（ref.mp3 / ref.wav 等）</div>';
+                    card.innerHTML = `
+                        <h4>${esc(em.name)} <span class="badge ${em.ref ? 'green' : 'red'}">${em.ref ? '可用' : '缺音频'}</span></h4>
+                        ${audioHtml}
+                        <div class="muted">asr.txt（参考音频对应的文字）：${esc(em.files.filter(f => f !== 'asr.txt').join('，') || '无文件')}</div>
+                        <textarea placeholder="该情绪参考音频所念的文字（asr.txt）">${esc(em.asr || '')}</textarea>
+                        <div class="card-actions">
+                            <label class="btn btn-gray" style="cursor:pointer;">上传音频<input type="file" class="upload-ref" accept="audio/*" style="display:none;"></label>
+                            <button class="btn save-asr">保存文字</button>
+                            <button class="btn btn-red del-emotion">删除文件夹</button>
+                        </div>
+                    `;
+                    card.querySelector('.upload-ref').addEventListener('change', async (ev) => {
+                        const file = ev.target.files[0];
+                        if (!file) return;
+                        const fd = new FormData();
+                        fd.append('role', role);
+                        fd.append('emotion', em.name);
+                        fd.append('file', file);
+                        try {
+                            await apiPostForm('api/emotions/upload', fd);
+                            showAudioMsg(`已上传 ${em.name} 的参考音频`);
+                            loadEmotions();
+                        } catch (e) { showAudioMsg('上传失败: ' + e.message, true); }
+                    });
+                    card.querySelector('.save-asr').addEventListener('click', async () => {
+                        const fd = new FormData();
+                        fd.append('role', role);
+                        fd.append('emotion', em.name);
+                        fd.append('asr', card.querySelector('textarea').value);
+                        try {
+                            await apiPostForm('api/emotions/upload', fd);
+                            showAudioMsg(`已保存 ${em.name} 的 asr.txt`);
+                        } catch (e) { showAudioMsg('保存失败: ' + e.message, true); }
+                    });
+                    card.querySelector('.del-emotion').addEventListener('click', async () => {
+                        if (!confirm(`确定删除情绪文件夹「${em.name}」及其全部内容？此操作不可恢复！`)) return;
+                        try {
+                            await apiPost('api/emotions/delete', { role, emotion: em.name });
+                            showAudioMsg('已删除：' + em.name);
+                            loadEmotions();
+                        } catch (e) { showAudioMsg('删除失败: ' + e.message, true); }
+                    });
+                    grid.appendChild(card);
+                });
+                if (!(data.emotions || []).length) {
+                    grid.innerHTML = '<div class="muted">该角色目录下暂无情绪文件夹，可在上方创建后上传音频。</div>';
+                }
+            } catch (e) {
+                showAudioMsg('加载情绪失败: ' + e.message, true);
+            }
+        }
+
+        /* ==================== 定时任务 / 事件 / 待办 ==================== */
+        let jobsState = [];
+        let eventsState = [];
+        let sessionsState = [];
+        let editingJobIdx = -1;
+        let editingEventIdx = -1;
+
+        function showSectionMsg(id, text, isError = false) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.color = isError ? 'red' : 'green';
+            el.textContent = text;
+            setTimeout(() => el.textContent = '', 6000);
+        }
+
+        async function loadTasksPage() {
+            await Promise.all([loadSessions(), loadJobs(), loadEvents(), loadTodos()]);
+        }
+
+        async function loadSessions() {
+            try {
+                const data = await apiGet('api/sessions');
+                sessionsState = data.sessions || [];
+                const dl = document.getElementById('session-list');
+                dl.innerHTML = '';
+                sessionsState.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.session_type === 'private' ? s.session_id.replace('private_', '') : s.session_id.replace('group_', '');
+                    dl.appendChild(opt);
+                });
+            } catch (e) { /* 静默 */ }
+        }
+
+        function triggerText(trigger) {
+            if (!trigger) return '-';
+            if (trigger.type === 'interval') return `每 ${trigger.seconds}s`;
+            let wd = trigger.weekdays && trigger.weekdays.length
+                ? '周' + trigger.weekdays.map(w => '一二三四五六日'[w % 7]).join('/') : '每天';
+            return `${wd} ${trigger.time || ''}`;
+        }
+
+        async function loadJobs() {
+            try {
+                const data = await apiGet('api/jobs');
+                jobsState = data.jobs || [];
+                const wrap = document.getElementById('jobs-table-wrap');
+                if (!jobsState.length) {
+                    wrap.innerHTML = '<div class="muted">暂无定时任务，点击右上角「新建任务」创建。</div>';
+                    return;
+                }
+                let html = '<table class="data-table"><tr><th>名称</th><th>触发</th><th>目标</th><th>模式</th><th>状态</th><th>下次执行</th><th>操作</th></tr>';
+                jobsState.forEach((j, idx) => {
+                    const target = j.target ? `${j.target.session_type === 'group' ? '群' : '私聊'} ${j.target.session_id || ''}` : '-';
+                    const mode = j.action && j.action.mode === 'llm' ? 'LLM生成' : '固定话术';
+                    const next = j.runtime && j.runtime.next_run ? fmtTs(j.runtime.next_run) : (j.enabled ? '待调度' : '-');
+                    const err = j.runtime && j.runtime.last_error ? `<div class="muted" style="color:#c62828;">${esc(j.runtime.last_error)}</div>` : '';
+                    html += `<tr>
+                        <td>${esc(j.name)}</td><td>${esc(triggerText(j.trigger))}</td>
+                        <td>${esc(target)}</td><td>${mode}</td>
+                        <td><span class="badge ${j.enabled ? 'green' : 'gray'}">${j.enabled ? '启用' : '停用'}</span></td>
+                        <td>${next}${err}</td>
+                        <td>
+                            <button class="btn btn-orange job-run" data-idx="${idx}">执行</button>
+                            <button class="btn job-edit" data-idx="${idx}">编辑</button>
+                            <button class="btn btn-red job-del" data-idx="${idx}">删除</button>
+                        </td></tr>`;
+                });
+                html += '</table>';
+                wrap.innerHTML = html;
+                wrap.querySelectorAll('.job-run').forEach(b => b.addEventListener('click', async () => {
+                    const j = jobsState[+b.dataset.idx];
+                    try {
+                        await apiPost('api/jobs/run', { id: j.id });
+                        showSectionMsg('job-message', '已手动执行「' + j.name + '」');
+                    } catch (e) { showSectionMsg('job-message', '执行失败: ' + e.message, true); }
+                }));
+                wrap.querySelectorAll('.job-edit').forEach(b => b.addEventListener('click', () => openJobEditor(+b.dataset.idx)));
+                wrap.querySelectorAll('.job-del').forEach(b => b.addEventListener('click', async () => {
+                    const j = jobsState[+b.dataset.idx];
+                    if (!confirm(`删除定时任务「${j.name}」？`)) return;
+                    jobsState.splice(+b.dataset.idx, 1);
+                    await saveJobs();
+                }));
+            } catch (e) {
+                showSectionMsg('job-message', '加载定时任务失败: ' + e.message, true);
+            }
+        }
+
+        async function saveJobs() {
+            try {
+                const r = await apiPost('api/jobs/save', { jobs: jobsState });
+                jobsState = r.jobs || jobsState;
+                showSectionMsg('job-message', '定时任务已保存并重新调度');
+                loadJobs();
+            } catch (e) {
+                showSectionMsg('job-message', '保存失败: ' + e.message, true);
+            }
+        }
+
+        function openJobEditor(idx = -1) {
+            editingJobIdx = idx;
+            const job = idx >= 0 ? jobsState[idx] : {};
+            const t = job.trigger || { type: 'daily', time: '08:00' };
+            const a = job.action || { mode: 'template', template: '' };
+            const tg = job.target || { session_type: 'private', session_id: '' };
+            const ed = document.getElementById('job-editor');
+            ed.classList.add('active');
+            ed.innerHTML = `
+                <h4>${idx >= 0 ? '编辑任务' : '新建任务'}</h4>
+                <div class="kv-grid">
+                    <div class="field"><label>任务名称</label><input id="job-name" value="${esc(job.name || '')}"></div>
+                    <div class="field"><label>触发类型</label>
+                        <select id="job-trigger-type">
+                            <option value="daily" ${t.type === 'daily' ? 'selected' : ''}>每日</option>
+                            <option value="weekly" ${t.type === 'weekly' ? 'selected' : ''}>每周</option>
+                            <option value="interval" ${t.type === 'interval' ? 'selected' : ''}>固定间隔</option>
+                        </select></div>
+                    <div class="field" id="job-time-field"><label>时间 (HH:MM)</label><input id="job-time" value="${esc(t.time || '08:00')}"></div>
+                    <div class="field" id="job-seconds-field" style="display:none;"><label>间隔秒数</label><input id="job-seconds" type="number" value="${t.seconds || 3600}"></div>
+                    <div class="field" id="job-weekdays-field" style="display:none;"><label>星期几（可多选）</label>
+                        <div id="job-weekdays">${[0,1,2,3,4,5,6].map(w =>
+                            `<label style="margin-right:8px;font-weight:normal;"><input type="checkbox" value="${w}" ${(t.weekdays || []).includes(w) ? 'checked' : ''}>周${'一二三四五六日'[w]}</label>`).join('')}
+                        </div></div>
+                    <div class="field"><label>会话类型</label>
+                        <select id="job-target-type">
+                            <option value="private" ${tg.session_type === 'private' ? 'selected' : ''}>私聊</option>
+                            <option value="group" ${tg.session_type === 'group' ? 'selected' : ''}>群聊</option>
+                        </select></div>
+                    <div class="field"><label>会话 ID (QQ号/群号)</label><input id="job-target-id" value="${esc(tg.session_id || '')}" list="session-list"></div>
+                    <div class="field"><label>内容模式</label>
+                        <select id="job-mode">
+                            <option value="template" ${a.mode === 'template' ? 'selected' : ''}>固定话术</option>
+                            <option value="llm" ${a.mode === 'llm' ? 'selected' : ''}>LLM 生成</option>
+                        </select></div>
+                    <div class="field wide" id="job-template-field"><label>话术模板（支持 {date} {time} {weekday} {character_name}）</label>
+                        <textarea id="job-template">${esc(a.template || '')}</textarea></div>
+                    <div class="field wide" id="job-llm-field" style="display:none;"><label>LLM 生成指令</label>
+                        <textarea id="job-llm" placeholder="例如：现在是早上八点，用丛雨的语气叫主人起床">${esc(a.llm_prompt || '')}</textarea></div>
+                    <div class="field"><label style="font-weight:normal;"><input type="checkbox" id="job-voice" ${a.use_voice ? 'checked' : ''}> 附带语音</label></div>
+                    <div class="field"><label style="font-weight:normal;"><input type="checkbox" id="job-enabled" ${job.enabled !== false ? 'checked' : ''}> 启用</label></div>
+                </div>
+                <div style="margin-top:10px;">
+                    <button class="btn btn-green" id="job-save-btn">保存</button>
+                    <button class="btn btn-gray" id="job-cancel-btn">取消</button>
+                </div>
+            `;
+            const syncFields = () => {
+                const type = document.getElementById('job-trigger-type').value;
+                document.getElementById('job-time-field').style.display = type === 'interval' ? 'none' : '';
+                document.getElementById('job-seconds-field').style.display = type === 'interval' ? '' : 'none';
+                document.getElementById('job-weekdays-field').style.display = type === 'weekly' ? '' : 'none';
+                const mode = document.getElementById('job-mode').value;
+                document.getElementById('job-template-field').style.display = mode === 'template' ? '' : 'none';
+                document.getElementById('job-llm-field').style.display = mode === 'llm' ? '' : 'none';
+            };
+            document.getElementById('job-trigger-type').addEventListener('change', syncFields);
+            document.getElementById('job-mode').addEventListener('change', syncFields);
+            syncFields();
+            document.getElementById('job-cancel-btn').addEventListener('click', () => ed.classList.remove('active'));
+            document.getElementById('job-save-btn').addEventListener('click', () => {
+                const type = document.getElementById('job-trigger-type').value;
+                const mode = document.getElementById('job-mode').value;
+                const weekdays = Array.from(document.querySelectorAll('#job-weekdays input:checked')).map(i => +i.value);
+                const trigger = type === 'interval'
+                    ? { type, seconds: Math.max(5, +document.getElementById('job-seconds').value || 3600) }
+                    : { type: type === 'weekly' ? 'daily' : 'daily', time: document.getElementById('job-time').value || '08:00', weekdays: type === 'weekly' ? weekdays : undefined };
+                const jobNew = {
+                    id: job.id || `job_${Date.now()}`,
+                    name: document.getElementById('job-name').value || '未命名任务',
+                    enabled: document.getElementById('job-enabled').checked,
+                    trigger,
+                    target: { session_type: document.getElementById('job-target-type').value,
+                              session_id: document.getElementById('job-target-id').value.trim() },
+                    action: { mode,
+                              template: document.getElementById('job-template').value,
+                              llm_prompt: document.getElementById('job-llm').value,
+                              use_voice: document.getElementById('job-voice').checked },
+                };
+                if (editingJobIdx >= 0) jobsState[editingJobIdx] = jobNew;
+                else jobsState.push(jobNew);
+                ed.classList.remove('active');
+                saveJobs();
+            });
+        }
+        document.getElementById('add-job-btn').addEventListener('click', () => openJobEditor(-1));
+
+        async function loadEvents() {
+            try {
+                const data = await apiGet('api/events');
+                eventsState = data.events || [];
+                const wrap = document.getElementById('events-table-wrap');
+                if (!eventsState.length) {
+                    wrap.innerHTML = '<div class="muted">暂无事件，点击右上角「新建事件」创建。</div>';
+                    return;
+                }
+                let html = '<table class="data-table"><tr><th>名称</th><th>日期</th><th>模式</th><th>目标</th><th>状态</th><th>操作</th></tr>';
+                eventsState.forEach((ev, idx) => {
+                    const target = ev.targets && ev.targets[0] ? `${ev.targets[0].session_type === 'group' ? '群' : '私聊'} ${ev.targets[0].session_id}` : '-';
+                    html += `<tr>
+                        <td>${esc(ev.name)}</td><td>${esc(ev.date || '')}</td>
+                        <td>${ev.mode === 'llm' ? 'LLM生成' : '固定话术'}</td><td>${esc(target)}</td>
+                        <td><span class="badge ${ev.enabled ? 'green' : 'gray'}">${ev.enabled ? '启用' : '停用'}</span></td>
+                        <td>
+                            <button class="btn btn-orange ev-test" data-idx="${idx}">测试</button>
+                            <button class="btn ev-edit" data-idx="${idx}">编辑</button>
+                            <button class="btn btn-red ev-del" data-idx="${idx}">删除</button>
+                        </td></tr>`;
+                });
+                html += '</table>';
+                wrap.innerHTML = html;
+                wrap.querySelectorAll('.ev-test').forEach(b => b.addEventListener('click', async () => {
+                    try {
+                        const r = await apiPost('api/events/test', { id: eventsState[+b.dataset.idx].id });
+                        showSectionMsg('event-message', r.message || (r.success ? '已发送' : '失败'), !r.success);
+                    } catch (e) { showSectionMsg('event-message', '测试失败: ' + e.message, true); }
+                }));
+                wrap.querySelectorAll('.ev-edit').forEach(b => b.addEventListener('click', () => openEventEditor(+b.dataset.idx)));
+                wrap.querySelectorAll('.ev-del').forEach(b => b.addEventListener('click', async () => {
+                    if (!confirm('删除该事件？')) return;
+                    eventsState.splice(+b.dataset.idx, 1);
+                    await saveEvents();
+                }));
+            } catch (e) {
+                showSectionMsg('event-message', '加载事件失败: ' + e.message, true);
+            }
+        }
+
+        async function saveEvents() {
+            try {
+                await apiPost('api/events/save', { events: eventsState });
+                showSectionMsg('event-message', '事件已保存');
+                loadEvents();
+            } catch (e) {
+                showSectionMsg('event-message', '保存失败: ' + e.message, true);
+            }
+        }
+
+        function openEventEditor(idx = -1) {
+            editingEventIdx = idx;
+            const ev = idx >= 0 ? eventsState[idx] : {};
+            const tg = (ev.targets && ev.targets[0]) || { session_type: 'private', session_id: '' };
+            const ed = document.getElementById('event-editor');
+            ed.classList.add('active');
+            ed.innerHTML = `
+                <h4>${idx >= 0 ? '编辑事件' : '新建事件'}</h4>
+                <div class="kv-grid">
+                    <div class="field"><label>事件名称</label><input id="ev-name" value="${esc(ev.name || '')}" placeholder="如 元旦"></div>
+                    <div class="field"><label>日期 (MM-DD)</label><input id="ev-date" value="${esc(ev.date || '')}" placeholder="01-01"></div>
+                    <div class="field"><label>内容模式</label>
+                        <select id="ev-mode">
+                            <option value="template" ${ev.mode !== 'llm' ? 'selected' : ''}>固定话术</option>
+                            <option value="llm" ${ev.mode === 'llm' ? 'selected' : ''}>LLM 生成</option>
+                        </select></div>
+                    <div class="field"><label>会话类型</label>
+                        <select id="ev-target-type">
+                            <option value="private" ${tg.session_type === 'private' ? 'selected' : ''}>私聊</option>
+                            <option value="group" ${tg.session_type === 'group' ? 'selected' : ''}>群聊</option>
+                        </select></div>
+                    <div class="field"><label>会话 ID</label><input id="ev-target-id" value="${esc(tg.session_id || '')}" list="session-list"></div>
+                    <div class="field"><label style="font-weight:normal;"><input type="checkbox" id="ev-voice" ${ev.use_voice ? 'checked' : ''}> 附带语音</label></div>
+                    <div class="field"><label style="font-weight:normal;"><input type="checkbox" id="ev-enabled" ${ev.enabled !== false ? 'checked' : ''}> 启用</label></div>
+                    <div class="field wide" id="ev-template-field"><label>话术模板（支持 {date} {weekday} {character_name}）</label>
+                        <textarea id="ev-template">${esc(ev.template || '')}</textarea></div>
+                    <div class="field wide" id="ev-llm-field" style="display:none;"><label>LLM 生成指令</label>
+                        <textarea id="ev-llm">${esc(ev.llm_prompt || '')}</textarea></div>
+                </div>
+                <div style="margin-top:10px;">
+                    <button class="btn btn-green" id="ev-save-btn">保存</button>
+                    <button class="btn btn-gray" id="ev-cancel-btn">取消</button>
+                </div>
+            `;
+            const syncFields = () => {
+                const mode = document.getElementById('ev-mode').value;
+                document.getElementById('ev-template-field').style.display = mode === 'template' ? '' : 'none';
+                document.getElementById('ev-llm-field').style.display = mode === 'llm' ? '' : 'none';
+            };
+            document.getElementById('ev-mode').addEventListener('change', syncFields);
+            syncFields();
+            document.getElementById('ev-cancel-btn').addEventListener('click', () => ed.classList.remove('active'));
+            document.getElementById('ev-save-btn').addEventListener('click', () => {
+                const mode = document.getElementById('ev-mode').value;
+                const evNew = {
+                    id: ev.id || `evt_${Date.now()}`,
+                    name: document.getElementById('ev-name').value || '未命名事件',
+                    type: 'date',
+                    date: document.getElementById('ev-date').value.trim(),
+                    mode,
+                    template: document.getElementById('ev-template').value,
+                    llm_prompt: document.getElementById('ev-llm').value,
+                    use_voice: document.getElementById('ev-voice').checked,
+                    enabled: document.getElementById('ev-enabled').checked,
+                    targets: [{ session_type: document.getElementById('ev-target-type').value,
+                                session_id: document.getElementById('ev-target-id').value.trim() }],
+                };
+                if (editingEventIdx >= 0) eventsState[editingEventIdx] = evNew;
+                else eventsState.push(evNew);
+                ed.classList.remove('active');
+                saveEvents();
+            });
+        }
+        document.getElementById('add-event-btn').addEventListener('click', () => openEventEditor(-1));
+
+        async function loadTodos() {
+            try {
+                const data = await apiGet('api/todos');
+                const todos = data.todos || [];
+                const wrap = document.getElementById('todos-table-wrap');
+                if (!todos.length) {
+                    wrap.innerHTML = '<div class="muted">暂无待办事项。</div>';
+                    return;
+                }
+                const statusBadge = s => ({pending: '<span class="badge green">待提醒</span>',
+                    done: '<span class="badge gray">已完成</span>',
+                    missed: '<span class="badge red">已过期</span>',
+                    cancelled: '<span class="badge gray">已取消</span>'}[s] || esc(s));
+                let html = '<table class="data-table"><tr><th>内容</th><th>提醒时间</th><th>会话</th><th>来源</th><th>状态</th><th>操作</th></tr>';
+                todos.forEach(t => {
+                    html += `<tr>
+                        <td>${esc(t.content)}</td><td>${fmtTs(t.remind_time)}</td>
+                        <td>${esc(t.session_type || '')} ${esc(t.session_id || '')}</td>
+                        <td><span class="badge gray">${t.source === 'manual' ? '手动' : '自动'}</span></td>
+                        <td>${statusBadge(t.status)}</td>
+                        <td>${t.status === 'pending' ? `<button class="btn btn-green todo-done" data-id="${t.id}">完成</button>` : ''}
+                            <button class="btn btn-red todo-del" data-id="${t.id}">删除</button></td></tr>`;
+                });
+                html += '</table>';
+                wrap.innerHTML = html;
+                wrap.querySelectorAll('.todo-done').forEach(b => b.addEventListener('click', async () => {
+                    await apiPost('api/todos/update', { id: +b.dataset.id, status: 'done' });
+                    loadTodos();
+                }));
+                wrap.querySelectorAll('.todo-del').forEach(b => b.addEventListener('click', async () => {
+                    if (!confirm('删除该待办？')) return;
+                    await apiPost('api/todos/delete', { id: +b.dataset.id });
+                    loadTodos();
+                }));
+            } catch (e) {
+                showSectionMsg('todo-message', '加载待办失败: ' + e.message, true);
+            }
+        }
+
+        document.getElementById('todo-add-btn').addEventListener('click', async () => {
+            const content = document.getElementById('todo-content').value.trim();
+            const time = document.getElementById('todo-time').value;
+            if (!content || !time) { showSectionMsg('todo-message', '请填写内容和时间', true); return; }
+            try {
+                await apiPost('api/todos/add', {
+                    content,
+                    remind_time: time,
+                    session_type: document.getElementById('todo-session-type').value,
+                    session_id: document.getElementById('todo-session-id').value.trim()
+                });
+                document.getElementById('todo-content').value = '';
+                showSectionMsg('todo-message', '待办已添加');
+                loadTodos();
+            } catch (e) {
+                showSectionMsg('todo-message', '添加失败: ' + e.message, true);
+            }
+        });
+
+        /* ==================== 统计面板 ==================== */
+        const CHART_COLORS = ['#1e88e5', '#43a047', '#fb8c00', '#8e24aa', '#e53935', '#00897b', '#f4511e', '#3949ab', '#7cb342', '#d81b60'];
+
+        function drawLineChart(canvas, labels, datasets, yInt = true) {
+            const ctx = canvas.getContext('2d');
+            const W = canvas.width = canvas.clientWidth || canvas.width;
+            const H = canvas.height;
+            ctx.clearRect(0, 0, W, H);
+            const padL = 44, padR = 16, padT = 16, padB = 30;
+            const iw = W - padL - padR, ih = H - padT - padB;
+            let maxV = 1;
+            datasets.forEach(d => d.data.forEach(v => { if (v > maxV) maxV = v; }));
+            maxV = Math.ceil(maxV * 1.15) || 1;
+            // 网格
+            ctx.strokeStyle = '#eceff1'; ctx.fillStyle = '#90a4ae'; ctx.font = '11px sans-serif'; ctx.lineWidth = 1;
+            const yTicks = 4;
+            for (let i = 0; i <= yTicks; i++) {
+                const y = padT + ih - ih * i / yTicks;
+                const v = yInt ? Math.round(maxV * i / yTicks) : (maxV * i / yTicks).toFixed(1);
+                ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+                ctx.textAlign = 'right'; ctx.fillText(String(v), padL - 6, y + 4);
+            }
+            ctx.textAlign = 'center';
+            const step = Math.ceil(labels.length / 14);
+            labels.forEach((lb, i) => {
+                if (i % step !== 0 && i !== labels.length - 1) return;
+                const x = padL + iw * (labels.length === 1 ? 0.5 : i / (labels.length - 1));
+                ctx.fillText(lb, x, H - 10);
+            });
+            datasets.forEach((ds, di) => {
+                const color = ds.color || CHART_COLORS[di % CHART_COLORS.length];
+                ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2;
+                ctx.beginPath();
+                ds.data.forEach((v, i) => {
+                    const x = padL + iw * (labels.length === 1 ? 0.5 : i / (labels.length - 1));
+                    const y = padT + ih - ih * (v / maxV);
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+                if (datasets.length === 1) {
+                    ctx.globalAlpha = 0.12;
+                    ctx.lineTo(padL + iw, padT + ih); ctx.lineTo(padL, padT + ih); ctx.closePath(); ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
+                ds.data.forEach((v, i) => {
+                    const x = padL + iw * (labels.length === 1 ? 0.5 : i / (labels.length - 1));
+                    const y = padT + ih - ih * (v / maxV);
+                    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+                });
+            });
+            // 图例
+            if (datasets.length > 1) {
+                let lx = padL;
+                ctx.font = '12px sans-serif'; ctx.textAlign = 'left';
+                datasets.forEach((ds, di) => {
+                    const color = ds.color || CHART_COLORS[di % CHART_COLORS.length];
+                    ctx.fillStyle = color; ctx.fillRect(lx, 2, 10, 10);
+                    ctx.fillStyle = '#555'; ctx.fillText(ds.label || '', lx + 14, 11);
+                    lx += 14 + ctx.measureText(ds.label || '').width + 18;
+                });
+            }
+        }
+
+        function drawBarChart(canvas, labels, values, color) {
+            const ctx = canvas.getContext('2d');
+            const W = canvas.width = canvas.clientWidth || canvas.width;
+            const H = canvas.height;
+            ctx.clearRect(0, 0, W, H);
+            const padL = 44, padR = 16, padT = 16, padB = 34;
+            const iw = W - padL - padR, ih = H - padT - padB;
+            let maxV = 1;
+            values.forEach(v => { if (v > maxV) maxV = v; });
+            maxV = Math.ceil(maxV * 1.15) || 1;
+            ctx.strokeStyle = '#eceff1'; ctx.fillStyle = '#90a4ae'; ctx.font = '11px sans-serif';
+            for (let i = 0; i <= 4; i++) {
+                const y = padT + ih - ih * i / 4;
+                ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+                ctx.textAlign = 'right'; ctx.fillText(String(Math.round(maxV * i / 4)), padL - 6, y + 4);
+            }
+            const n = labels.length;
+            const bw = iw / Math.max(1, n) * 0.6;
+            ctx.textAlign = 'center';
+            labels.forEach((lb, i) => {
+                const x = padL + iw * (i + 0.5) / Math.max(1, n);
+                const h = ih * (values[i] / maxV);
+                ctx.fillStyle = color || CHART_COLORS[i % CHART_COLORS.length];
+                ctx.fillRect(x - bw / 2, padT + ih - h, bw, h);
+                ctx.fillStyle = '#666';
+                ctx.save();
+                ctx.translate(x, H - 12);
+                ctx.fillText(String(lb).slice(0, 8), 0, 0);
+                ctx.restore();
+                ctx.fillStyle = '#333';
+                ctx.fillText(String(values[i]), x, padT + ih - h - 4);
+            });
+        }
+
+        async function loadStatsPage() {
+            try {
+                const s = await apiGet('api/stats');
+                // 汇总卡片
+                const totals = s.totals || {};
+                const today = s.today || {};
+                const perf = s.performance || {};
+                const days = Math.max(1, Math.round((perf.uptime_seconds || 1) / 86400));
+                document.getElementById('stats-cards').innerHTML = `
+                    <div class="stat-card"><div class="num">${totals.n ?? 0}</div><div class="label">累计回复次数</div></div>
+                    <div class="stat-card"><div class="num">${today.n ?? 0}</div><div class="label">今日回复</div></div>
+                    <div class="stat-card"><div class="num">${(totals.avg_llm || 0).toFixed ? totals.avg_llm.toFixed(0) : 0} ms</div><div class="label">平均 LLM 耗时</div></div>
+                    <div class="stat-card"><div class="num">${(totals.avg_tts || 0).toFixed ? totals.avg_tts.toFixed(0) : 0} ms</div><div class="label">平均 TTS 耗时</div></div>
+                    <div class="stat-card"><div class="num">${(s.top_sessions || []).length}</div><div class="label">活跃会话</div></div>
+                    <div class="stat-card"><div class="num">${(perf.uptime_seconds ? Math.round(perf.uptime_seconds / 3600) : 0)} 小时</div><div class="label">运行时长</div></div>
+                `;
+                // 近14天消息量
+                const dayMap = {};
+                (s.per_day || []).forEach(r => { dayMap[r.day_idx] = r.n; });
+                const nowDayIdx = Math.floor(Date.now() / 86400000);
+                const labels = [], data = [];
+                for (let i = 13; i >= 0; i--) {
+                    const di = nowDayIdx - i;
+                    const d = new Date(di * 86400000);
+                    labels.push(`${d.getMonth() + 1}/${d.getDate()}`);
+                    data.push(dayMap[di] || 0);
+                }
+                drawLineChart(document.getElementById('chart-msgs'), labels, [{ label: '消息量', data }]);
+                // 情绪分布
+                const emos = s.emotions || [];
+                drawBarChart(document.getElementById('chart-emotions'),
+                    emos.map(e => e.emotion), emos.map(e => e.n));
+                // 情绪趋势
+                const trendMap = {};
+                (s.emotion_trend || []).forEach(r => {
+                    (trendMap[r.emotion] = trendMap[r.emotion] || {})[r.day_idx] = r.n;
+                });
+                const topEmos = emos.slice(0, 5).map(e => e.emotion);
+                const trendDatasets = topEmos.map((emo, i) => ({
+                    label: emo, color: CHART_COLORS[i % CHART_COLORS.length],
+                    data: labels.map((_, idx) => {
+                        const di = nowDayIdx - (13 - idx);
+                        return (trendMap[emo] || {})[di] || 0;
+                    })
+                }));
+                drawLineChart(document.getElementById('chart-trend'), labels, trendDatasets);
+                // 表格
+                const rows = arr => (arr || []).map(r =>
+                    `<tr><td>${esc(r.session_id || r.user_id || '')}</td><td>${esc(r.user_name || '')}</td><td>${r.n}</td><td>${fmtTs(r.last_ts)}</td></tr>`).join('');
+                document.getElementById('stats-tables').innerHTML = `
+                    <div class="chart-box"><h4>最活跃会话 TOP10</h4>
+                        <table class="data-table"><tr><th>会话</th><th>用户</th><th>次数</th><th>最近</th></tr>${rows(s.top_sessions)}</table></div>
+                    <div class="chart-box"><h4>最活跃用户 TOP10</h4>
+                        <table class="data-table"><tr><th>用户ID</th><th>昵称</th><th>次数</th></tr>
+                        ${(s.top_users || []).map(r => `<tr><td>${esc(r.user_id)}</td><td>${esc(r.user_name || '')}</td><td>${r.n}</td></tr>`).join('')}</table></div>
+                `;
+            } catch (e) {
+                document.getElementById('stats-cards').innerHTML = `<div class="muted">加载统计失败: ${esc(e.message)}</div>`;
+            }
+            startPerfPolling();
+        }
+
+        async function refreshPerformance() {
+            try {
+                const p = await apiGet('api/performance');
+                const h = Math.floor((p.uptime_seconds || 0) / 3600);
+                const m = Math.floor(((p.uptime_seconds || 0) % 3600) / 60);
+                document.getElementById('perf-grid').innerHTML = `
+                    <div class="perf-item"><b><span class="dot ${p.napcat_connected ? 'on' : 'off'}"></span>${p.napcat_connected ? '已连接' : '未连接'}</b>NapCat</div>
+                    <div class="perf-item"><b><span class="dot ${p.tts_online ? 'on' : 'off'}"></span>${p.tts_online ? '在线' : '离线'}</b>TTS 服务</div>
+                    <div class="perf-item"><b>${p.scheduler_jobs ?? 0}</b>运行中任务</div>
+                    <div class="perf-item"><b>${p.messages_total ?? 0}</b>本次运行消息数</div>
+                    <div class="perf-item"><b>${p.errors_total ?? 0}</b>错误次数</div>
+                    <div class="perf-item"><b>${p.active_sessions ?? 0}</b>活跃会话</div>
+                    <div class="perf-item"><b>${p.llm ? p.llm.avg : 0} ms</b>LLM 平均耗时 (最近 ${p.llm ? p.llm.count : 0} 次)</div>
+                    <div class="perf-item"><b>${p.tts ? p.tts.avg : 0} ms</b>TTS 平均耗时 (最近 ${p.tts ? p.tts.count : 0} 次)</div>
+                    <div class="perf-item"><b>${h}时${m}分</b>持续运行</div>
+                `;
+                document.getElementById('perf-refresh-at').textContent = '（每 3 秒自动刷新）';
+            } catch (e) { /* 静默 */ }
+        }
+
+        function startPerfPolling() {
+            stopPerfPolling();
+            refreshPerformance();
+            perfTimer = setInterval(refreshPerformance, 3000);
+        }
+        function stopPerfPolling() {
+            if (perfTimer) { clearInterval(perfTimer); perfTimer = null; }
+        }
+
+        /* ==================== 高级功能 ==================== */
+        function showAdvMsg(id, text, isError = false) {
+            const el = document.getElementById(id);
+            el.style.color = isError ? 'red' : 'green';
+            el.textContent = text;
+            setTimeout(() => el.textContent = '', 6000);
+        }
+
+        async function loadAdvancedPage() {
+            loadStickers(); loadTools(); loadRag(); loadProfiles();
+        }
+
+        // ---- 表情包 ----
+        async function loadStickers() {
+            try {
+                const data = await apiGet('api/stickers/list');
+                const wrap = document.getElementById('stickers-wrap');
+                if (!(data.categories || []).length) {
+                    wrap.innerHTML = '<div class="muted">暂无表情包，选择分类并上传图片即可。</div>';
+                    return;
+                }
+                wrap.innerHTML = data.categories.map(cat => `
+                    <div class="sticker-cat">
+                        <h4>${esc(cat.name)} <span class="badge">${cat.files.length} 张</span></h4>
+                        <div class="sticker-grid">${cat.files.map(f => `
+                            <div class="sticker-thumb">
+                                <img src="api/stickers/file?category=${encodeURIComponent(cat.name)}&name=${encodeURIComponent(f)}" alt="">
+                                <button class="del" data-cat="${esc(cat.name)}" data-name="${esc(f)}">删</button>
+                            </div>`).join('')}</div>
+                    </div>`).join('');
+                wrap.querySelectorAll('.del').forEach(b => b.addEventListener('click', async () => {
+                    if (!confirm(`删除表情 ${b.dataset.cat}/${b.dataset.name}？`)) return;
+                    await apiPost('api/stickers/delete', { category: b.dataset.cat, name: b.dataset.name });
+                    loadStickers();
+                }));
+            } catch (e) {
+                showAdvMsg('sticker-message', '加载表情包失败: ' + e.message, true);
+            }
+        }
+        document.getElementById('sticker-files').addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files || []);
+            const category = document.getElementById('sticker-category').value.trim();
+            if (!files.length || !category) { showAdvMsg('sticker-message', '请填写分类名并选择图片', true); return; }
+            const fd = new FormData();
+            fd.append('category', category);
+            files.forEach(f => fd.append('files', f));
+            try {
+                const r = await apiPostForm('api/stickers/upload', fd);
+                showAdvMsg('sticker-message', `已上传 ${r.saved.length} 张表情`);
+                document.getElementById('sticker-category').value = '';
+                loadStickers();
+            } catch (err) { showAdvMsg('sticker-message', '上传失败: ' + err.message, true); }
+            e.target.value = '';
+        });
+
+        // ---- 工具调用 ----
+        let toolsState = [];
+        let editingToolIdx = -1;
+        async function loadTools() {
+            try {
+                const data = await apiGet('api/tools');
+                toolsState = data.tools || [];
+                const wrap = document.getElementById('tools-table-wrap');
+                if (!toolsState.length) {
+                    wrap.innerHTML = '<div class="muted">暂无工具，点击「新建工具」创建。</div>';
+                    return;
+                }
+                let html = '<table class="data-table"><tr><th>名称</th><th>类型</th><th>说明</th><th>状态</th><th>授权用户</th><th>操作</th></tr>';
+                toolsState.forEach((t, idx) => {
+                    const desc = (t.description || '').slice(0, 40);
+                    html += `<tr>
+                        <td>${esc(t.name)}</td>
+                        <td><span class="badge">${esc(t.type || 'builtin')}${t.builtin ? '·' + esc(t.builtin) : ''}</span></td>
+                        <td>${esc(desc)}</td>
+                        <td><span class="badge ${t.enabled ? 'green' : 'gray'}">${t.enabled ? '启用' : '停用'}</span></td>
+                        <td>${(t.allowed_users || []).length ? esc(t.allowed_users.join(',')) : '<span class="muted">所有人</span>'}</td>
+                        <td>
+                            <button class="btn btn-orange tool-test" data-idx="${idx}">测试</button>
+                            <button class="btn tool-edit" data-idx="${idx}">编辑</button>
+                            <button class="btn btn-red tool-del" data-idx="${idx}">删除</button>
+                        </td></tr>`;
+                });
+                html += '</table>';
+                wrap.innerHTML = html;
+                wrap.querySelectorAll('.tool-test').forEach(b => b.addEventListener('click', async () => {
+                    const t = toolsState[+b.dataset.idx];
+                    try {
+                        const r = await apiPost('api/tools/test', { name: t.name, arguments: {} });
+                        showAdvMsg('tool-message', `测试 ${t.name}: ${r.success ? '成功' : '失败'} → ${r.output || ''}`);
+                    } catch (e) { showAdvMsg('tool-message', '测试失败: ' + e.message, true); }
+                }));
+                wrap.querySelectorAll('.tool-edit').forEach(b => b.addEventListener('click', () => openToolEditor(+b.dataset.idx)));
+                wrap.querySelectorAll('.tool-del').forEach(b => b.addEventListener('click', async () => {
+                    if (!confirm('删除该工具？')) return;
+                    toolsState.splice(+b.dataset.idx, 1);
+                    await saveTools();
+                }));
+            } catch (e) {
+                showAdvMsg('tool-message', '加载工具失败: ' + e.message, true);
+            }
+        }
+
+        async function saveTools() {
+            try {
+                await apiPost('api/tools/save', { tools: toolsState });
+                showAdvMsg('tool-message', '工具配置已保存');
+                loadTools();
+            } catch (e) {
+                showAdvMsg('tool-message', '保存失败: ' + e.message, true);
+            }
+        }
+
+        function openToolEditor(idx = -1) {
+            editingToolIdx = idx;
+            const t = idx >= 0 ? toolsState[idx] : {};
+            const ed = document.getElementById('tool-editor');
+            ed.classList.add('active');
+            ed.innerHTML = `
+                <h4>${idx >= 0 ? '编辑工具' : '新建工具'}</h4>
+                <div class="kv-grid">
+                    <div class="field"><label>工具名（英文，供 LLM 调用）</label><input id="tool-name" value="${esc(t.name || '')}"></div>
+                    <div class="field"><label>类型</label>
+                        <select id="tool-type">
+                            <option value="builtin" ${t.type === 'builtin' || !t.type ? 'selected' : ''}>内置工具</option>
+                            <option value="http" ${t.type === 'http' ? 'selected' : ''}>HTTP 请求</option>
+                            <option value="command" ${t.type === 'command' ? 'selected' : ''}>命令行（需全局授权）</option>
+                        </select></div>
+                    <div class="field" id="tool-builtin-field"><label>内置功能</label>
+                        <select id="tool-builtin">
+                            <option value="time" ${t.builtin === 'time' ? 'selected' : ''}>当前时间</option>
+                            <option value="calculate" ${t.builtin === 'calculate' ? 'selected' : ''}>数学计算</option>
+                            <option value="weather" ${t.builtin === 'weather' ? 'selected' : ''}>天气查询</option>
+                            <option value="web_fetch" ${t.builtin === 'web_fetch' ? 'selected' : ''}>网页读取</option>
+                        </select></div>
+                    <div class="field wide" id="tool-url-field" style="display:none;"><label>URL 模板（参数用 {名称} 占位）</label>
+                        <input id="tool-url" value="${esc(t.url || '')}" placeholder="https://api.example.com/weather?city={city}"></div>
+                    <div class="field" id="tool-method-field" style="display:none;"><label>请求方法</label>
+                        <select id="tool-method"><option value="GET" ${t.method !== 'POST' ? 'selected' : ''}>GET</option><option value="POST" ${t.method === 'POST' ? 'selected' : ''}>POST</option></select></div>
+                    <div class="field wide" id="tool-command-field" style="display:none;"><label>命令模板（参数用 {名称} 占位，谨慎！）</label>
+                        <input id="tool-command" value="${esc(t.command || '')}"></div>
+                    <div class="field wide"><label>功能描述（给 LLM 看）</label><textarea id="tool-desc">${esc(t.description || '')}</textarea></div>
+                    <div class="field wide"><label>参数定义 (JSON Schema)</label>
+                        <textarea id="tool-params">${esc(JSON.stringify(t.parameters || {type: 'object', properties: {}, required: []}, null, 1))}</textarea></div>
+                    <div class="field"><label>授权用户（QQ号，逗号分隔，留空=所有人）</label><input id="tool-users" value="${esc((t.allowed_users || []).join(','))}"></div>
+                    <div class="field"><label>单次回复调用上限</label><input id="tool-max" type="number" value="${t.max_calls_per_reply ?? 2}"></div>
+                    <div class="field"><label style="font-weight:normal;"><input type="checkbox" id="tool-enabled" ${t.enabled ? 'checked' : ''}> 启用</label></div>
+                </div>
+                <div style="margin-top:10px;">
+                    <button class="btn btn-green" id="tool-save-btn">保存</button>
+                    <button class="btn btn-gray" id="tool-cancel-btn">取消</button>
+                </div>
+            `;
+            const typeSel = document.getElementById('tool-type');
+            const syncFields = () => {
+                const v = typeSel.value;
+                document.getElementById('tool-builtin-field').style.display = v === 'builtin' ? '' : 'none';
+                document.getElementById('tool-url-field').style.display = v === 'http' ? '' : 'none';
+                document.getElementById('tool-method-field').style.display = v === 'http' ? '' : 'none';
+                document.getElementById('tool-command-field').style.display = v === 'command' ? '' : 'none';
+            };
+            typeSel.addEventListener('change', syncFields);
+            syncFields();
+            document.getElementById('tool-cancel-btn').addEventListener('click', () => ed.classList.remove('active'));
+            document.getElementById('tool-save-btn').addEventListener('click', () => {
+                let params;
+                try { params = JSON.parse(document.getElementById('tool-params').value || '{}'); }
+                catch (e) { showAdvMsg('tool-message', '参数定义不是合法 JSON', true); return; }
+                const type = typeSel.value;
+                const toolNew = {
+                    name: document.getElementById('tool-name').value.trim(),
+                    type,
+                    builtin: type === 'builtin' ? document.getElementById('tool-builtin').value : undefined,
+                    url: type === 'http' ? document.getElementById('tool-url').value : undefined,
+                    method: type === 'http' ? document.getElementById('tool-method').value : undefined,
+                    command: type === 'command' ? document.getElementById('tool-command').value : undefined,
+                    description: document.getElementById('tool-desc').value,
+                    parameters: params,
+                    allowed_users: document.getElementById('tool-users').value.split(',').map(s => s.trim()).filter(Boolean),
+                    max_calls_per_reply: +document.getElementById('tool-max').value || 2,
+                    enabled: document.getElementById('tool-enabled').checked,
+                };
+                if (!toolNew.name) { showAdvMsg('tool-message', '工具名不能为空', true); return; }
+                if (editingToolIdx >= 0) toolsState[editingToolIdx] = toolNew;
+                else toolsState.push(toolNew);
+                ed.classList.remove('active');
+                saveTools();
+            });
+        }
+        document.getElementById('add-tool-btn').addEventListener('click', () => openToolEditor(-1));
+
+        // ---- RAG ----
+        async function loadRag() {
+            try {
+                const data = await apiGet('api/rag/docs');
+                const wrap = document.getElementById('rag-table-wrap');
+                if (!(data.docs || []).length) {
+                    wrap.innerHTML = '<div class="muted">知识库为空，上传文档即可自动分块并向量化。</div>';
+                    return;
+                }
+                let html = '<table class="data-table"><tr><th>文档</th><th>分块数</th><th>字符数</th><th>添加时间</th><th>操作</th></tr>';
+                data.docs.forEach(d => {
+                    html += `<tr><td>${esc(d.name)}</td><td>${d.chunks}</td><td>${d.size}</td><td>${fmtTs(d.added_at)}</td>
+                        <td><button class="btn btn-red rag-del" data-id="${esc(d.id)}">删除</button></td></tr>`;
+                });
+                html += '</table>';
+                wrap.innerHTML = html;
+                wrap.querySelectorAll('.rag-del').forEach(b => b.addEventListener('click', async () => {
+                    if (!confirm('删除该文档及其向量数据？')) return;
+                    await apiPost('api/rag/delete', { id: b.dataset.id });
+                    loadRag();
+                }));
+            } catch (e) {
+                showAdvMsg('rag-message', '加载知识库失败: ' + e.message, true);
+            }
+        }
+        document.getElementById('rag-files').addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files || []);
+            if (!files.length) return;
+            const fd = new FormData();
+            files.forEach(f => fd.append('files', f));
+            showAdvMsg('rag-message', `正在上传并向量化 ${files.length} 个文档（可能需要一些时间）...`);
+            try {
+                const r = await apiPostForm('api/rag/upload', fd);
+                const ok = r.results.filter(x => x.success).length;
+                showAdvMsg('rag-message', `完成：成功 ${ok} 个，失败 ${r.results.length - ok} 个` +
+                    r.results.filter(x => !x.success).map(x => `（${x.file}: ${x.error}）`).join(''));
+                loadRag();
+            } catch (err) { showAdvMsg('rag-message', '上传失败: ' + err.message, true); }
+            e.target.value = '';
+        });
+        document.getElementById('rag-query-btn').addEventListener('click', async () => {
+            const q = document.getElementById('rag-query').value.trim();
+            if (!q) return;
+            document.getElementById('rag-query-result').textContent = '检索中...';
+            try {
+                const r = await apiPost('api/rag/query', { question: q });
+                document.getElementById('rag-query-result').innerHTML = r.hits.length
+                    ? r.hits.map(h => `<div>【${esc(h.doc)} · 相关度 ${h.sim}】${esc(h.text.slice(0, 150))}…</div>`).join('')
+                    : '没有找到相关内容（可尝试降低 rag_min_similarity）';
+            } catch (e) {
+                document.getElementById('rag-query-result').textContent = '检索失败: ' + e.message;
+            }
+        });
+
+        // ---- 用户画像 ----
+        async function loadProfiles() {
+            try {
+                const data = await apiGet('api/profiles');
+                const profiles = data.profiles || [];
+                const wrap = document.getElementById('profiles-table-wrap');
+                if (!profiles.length) {
+                    wrap.innerHTML = '<div class="muted">暂无用户画像。</div>';
+                    return;
+                }
+                let html = '<table class="data-table"><tr><th>用户ID</th><th>昵称</th><th>生日</th><th>喜好</th><th>备注</th><th>更新时间</th><th>操作</th></tr>';
+                profiles.forEach(p => {
+                    html += `<tr>
+                        <td>${esc(p.user_id)}</td><td>${esc(p.nickname || '')}</td><td>${esc(p.birthday || '')}</td>
+                        <td>${esc((p.likes || []).join('、'))}</td>
+                        <td>${esc((p.notes || []).join('、'))}</td>
+                        <td>${fmtTs(p.updated_at)}</td>
+                        <td><button class="btn profile-edit" data-uid="${esc(p.user_id)}">编辑</button>
+                            <button class="btn btn-red profile-del" data-uid="${esc(p.user_id)}">删除</button></td></tr>`;
+                });
+                html += '</table>';
+                wrap.innerHTML = html;
+                wrap.querySelectorAll('.profile-edit').forEach(b => b.addEventListener('click', () => {
+                    const p = profiles.find(x => String(x.user_id) === b.dataset.uid);
+                    openProfileEditor(p || { user_id: b.dataset.uid });
+                }));
+                wrap.querySelectorAll('.profile-del').forEach(b => b.addEventListener('click', async () => {
+                    if (!confirm(`删除用户 ${b.dataset.uid} 的画像？`)) return;
+                    await apiPost('api/profiles/delete', { user_id: b.dataset.uid });
+                    loadProfiles();
+                }));
+            } catch (e) {
+                showAdvMsg('profile-message', '加载画像失败: ' + e.message, true);
+            }
+        }
+
+        function openProfileEditor(p) {
+            const ed = document.getElementById('profile-editor');
+            ed.classList.add('active');
+            ed.innerHTML = `
+                <h4>编辑画像</h4>
+                <div class="kv-grid">
+                    <div class="field"><label>用户 QQ</label><input id="pf-uid" value="${esc(p.user_id || '')}"></div>
+                    <div class="field"><label>昵称</label><input id="pf-nick" value="${esc(p.nickname || '')}"></div>
+                    <div class="field"><label>生日 (MM-DD)</label><input id="pf-birth" value="${esc(p.birthday || '')}" placeholder="05-20"></div>
+                    <div class="field wide"><label>喜好（每行一个）</label><textarea id="pf-likes">${esc((p.likes || []).join('\n'))}</textarea></div>
+                    <div class="field wide"><label>厌恶（每行一个）</label><textarea id="pf-dislikes">${esc((p.dislikes || []).join('\n'))}</textarea></div>
+                    <div class="field wide"><label>重要事项（每行一个）</label><textarea id="pf-notes">${esc((p.notes || []).join('\n'))}</textarea></div>
+                </div>
+                <div style="margin-top:10px;">
+                    <button class="btn btn-green" id="pf-save-btn">保存</button>
+                    <button class="btn btn-gray" id="pf-cancel-btn">取消</button>
+                </div>
+            `;
+            document.getElementById('pf-cancel-btn').addEventListener('click', () => ed.classList.remove('active'));
+            document.getElementById('pf-save-btn').addEventListener('click', async () => {
+                const uid = document.getElementById('pf-uid').value.trim();
+                if (!uid) { showAdvMsg('profile-message', '用户QQ不能为空', true); return; }
+                try {
+                    await apiPost('api/profiles/save', {
+                        user_id: uid,
+                        profile: {
+                            nickname: document.getElementById('pf-nick').value.trim(),
+                            birthday: document.getElementById('pf-birth').value.trim(),
+                            likes: document.getElementById('pf-likes').value.split('\n').map(s => s.trim()).filter(Boolean),
+                            dislikes: document.getElementById('pf-dislikes').value.split('\n').map(s => s.trim()).filter(Boolean),
+                            notes: document.getElementById('pf-notes').value.split('\n').map(s => s.trim()).filter(Boolean),
+                        }
+                    });
+                    ed.classList.remove('active');
+                    showAdvMsg('profile-message', '画像已保存');
+                    loadProfiles();
+                } catch (e) { showAdvMsg('profile-message', '保存失败: ' + e.message, true); }
+            });
+        }
+        document.getElementById('add-profile-btn').addEventListener('click', () => openProfileEditor({}));
+
+        /* ==================== 日志 ==================== */
         function startLogPolling() {
             if (logTimer) clearInterval(logTimer);
             const fetchLogs = async () => {
