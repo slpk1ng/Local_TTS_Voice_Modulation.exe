@@ -21,7 +21,7 @@ except ImportError:
     print("警告：未安装 pywebview，将使用浏览器访问。可运行 pip install pywebview 启用。")
 
 try:
-    from napcat import NapCatClient, PrivateMessageEvent, GroupMessageEvent, Text, Record, Image, At
+    from napcat import NapCatClient, PrivateMessageEvent, GroupMessageEvent, Text, Record, Image, At, Reply
 except ImportError:
     print("错误：未安装 napcat-sdk，请先运行 pip install napcat-sdk")
     raise
@@ -286,6 +286,7 @@ class ConfigLoader:
             "text_separate": False,
             "dynamic_sleep": True,
             "only_private": False,
+            "group_need_at": True,
             "auto_start_tts": True,
             "tts_start_script": "",
             "device": "cuda",
@@ -954,6 +955,65 @@ def pick_image_source(seg) -> Optional[str]:
     return chosen or (srcs[0] if srcs else None)
 
 
+async def fetch_quoted_context(client, reply_seg) -> Optional[dict]:
+    """回查被引用消息的内容与发送者。
+
+    OneBot v11 的 Reply 段只带被引用消息的 id，引用内容需要用 get_msg 回查；
+    接口不可用（如测试替身）或回查失败时返回 None，不影响正常回复。
+    """
+    getter = getattr(client, "get_msg", None)
+    if getter is None:
+        return None
+    resp = None
+    last_err = None
+    for msg_id in (getattr(reply_seg, "id", None), getattr(reply_seg, "seq", None)):
+        if msg_id in (None, ""):
+            continue
+        try:
+            r = await getter(message_id=msg_id)
+            if isinstance(r, dict) and (r.get("message") or r.get("raw_message")):
+                resp = r
+                break
+        except Exception as e:
+            last_err = e
+    if resp is None:
+        if last_err is not None:
+            print(f"获取引用消息失败: {type(last_err).__name__}: {last_err}")
+        return None
+    sender = resp.get("sender") or {}
+    who = str(sender.get("nickname") or sender.get("user_id") or "")
+    parts = []
+    quoted_image_urls = []
+    for s in (resp.get("message") or []):
+        seg_type = s.get("type") if isinstance(s, dict) else getattr(s, "_type", None)
+        if isinstance(s, dict):
+            data = s.get("data") or {}
+        else:
+            data = s
+        if seg_type == "text":
+            t = (data.get("text", "") if isinstance(data, dict) else getattr(s, "text", "")) or ""
+            if str(t).strip():
+                parts.append(str(t).strip())
+        elif seg_type == "image":
+            parts.append("[图片]")
+            url = (data.get("url") if isinstance(data, dict) else getattr(s, "url", "")) or ""
+            if str(url).startswith(("http://", "https://")) and url not in quoted_image_urls:
+                quoted_image_urls.append(str(url))
+        elif seg_type == "record":
+            parts.append("[语音]")
+        elif seg_type == "face":
+            parts.append("[表情]")
+        elif seg_type == "at":
+            qq = data.get("qq", "") if isinstance(data, dict) else getattr(s, "qq", "")
+            parts.append(f"[@{qq}]" if qq else "[@]")
+    text = " ".join(p for p in parts if p).strip()
+    if not who and not text and not quoted_image_urls:
+        return None
+    return {"who": who, "text": text or "[非文本消息]",
+            "user_id": str(sender.get("user_id", "") or ""),
+            "image_urls": quoted_image_urls}
+
+
 async def handle_message_event(event, client):
     global napcat_client
     napcat_client = client
@@ -982,6 +1042,7 @@ async def handle_message_event(event, client):
     has_image = False
     image_urls = []
     at_bot = False
+    reply_seg = None
     for seg in event.message:
         if isinstance(seg, Text):
             user_text += seg.text
@@ -993,9 +1054,27 @@ async def handle_message_event(event, client):
         elif isinstance(seg, At):
             if str(seg.qq) == str(client.self_id):
                 at_bot = True
+        elif isinstance(seg, Reply):
+            reply_seg = seg
 
-    if not is_private and not at_bot and global_config.get("only_private", False):
-        return
+    # 引用消息：回查被引用内容，拼进用户消息传给 LLM；
+    # 引用的是机器人自己的消息时视同 @ 机器人；引用的图片同样送识图
+    if reply_seg is not None:
+        quoted = await fetch_quoted_context(client, reply_seg)
+        if quoted:
+            if quoted["user_id"] and quoted["user_id"] == str(client.self_id):
+                at_bot = True
+            for qurl in quoted.get("image_urls", []):
+                if qurl not in image_urls:
+                    image_urls.append(qurl)
+                    has_image = True
+            quote_note = f"（回复 {quoted['who'] or '某人'} 的消息：{quoted['text']}）"
+            user_text = f"{quote_note}\n{user_text}" if user_text else quote_note
+
+    if not is_private and not at_bot:
+        # 群聊未 @ 机器人：默认不回复（group_need_at=False 恢复旧的「全部回复」行为）
+        if global_config.get("group_need_at", True) or global_config.get("only_private", False):
+            return
     if not user_text and not has_image:
         return
 
@@ -1009,9 +1088,13 @@ async def handle_message_event(event, client):
     meta["user_msg_count"] = int(meta.get("user_msg_count", 0)) + 1
     meta["last_user_text"] = user_text[:200]
     data["meta"] = meta
+    # 图片消息在历史中留下 [图片] 标记，否则识图回复之外，
+    # 文本 LLM 完全不知道发生过图片交互，两条链路上下文不互通
+    history_text = (f"{user_text} [图片]".strip() if has_image
+                    else user_text) or "[图片]"
     history.append({
         "role": "user",
-        "content": user_text,
+        "content": history_text,
         "sender_id": sender_id,
         "sender_name": sender_name,
         "timestamp": time.time()

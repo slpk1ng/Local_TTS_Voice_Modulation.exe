@@ -912,14 +912,13 @@ async def get_image_reply(ctx: RoleContext, user_text: str, history: list,
                           extra_parts=None, stats=None) -> Optional[Dict]:
     """识图回复：读取本地或下载网络图片，交给识图模型生成句子。"""
     try:
-        personality = ctx.get("personality_prompt", "")
-        json_prompt = ctx.get("json_prompt", "")
-        supplement = ctx.get("supplement_prompt", "")
         prompt_text = (
-            f"用户发来了一张图片，请仔细观察图片内容，结合你的角色人设：{personality}；{json_prompt}；{supplement}，"
-            f"根据图片内容回复（可以是吐槽、评价、撒娇等）。\n当前对话历史：{json.dumps(history[-10:], ensure_ascii=False)}\n"
+            "用户发来了一张图片，请仔细观察图片内容，结合你的角色人设与上方对话历史，"
+            "根据图片内容回复（可以是吐槽、评价、撒娇等）。\n"
             f"用户附加文字：{user_text}"
         )
+        # 与文本对话共用同一份历史（build_merged_history），保证识图与普通回复上下文互通
+        history_msgs = build_merged_history(history, ctx)
         images_for_payload = []  # [(mime, base64)]
         seen_sources = set()
         for img_source in image_urls:
@@ -971,13 +970,13 @@ async def get_image_reply(ctx: RoleContext, user_text: str, history: list,
         system_content = build_system_prompt(ctx, emotions, extra_parts)
         start = time.time()
         if backend == "ollama":
+            vision_messages = [{"role": "system", "content": system_content}]
+            vision_messages.extend(history_msgs)
+            vision_messages.append({"role": "user", "content": prompt_text,
+                                    "images": [b64 for _mime, b64 in images_for_payload]})
             payload = {
                 "model": model,
-                "messages": [
-                    {"role": "system", "content": system_content},
-                    {"role": "user", "content": prompt_text,
-                     "images": [b64 for _mime, b64 in images_for_payload]}
-                ],
+                "messages": vision_messages,
                 "stream": False, "think": False,
                 "options": {"temperature": float(ctx.get("temperature", 0.7)), "num_predict": 512}
             }
@@ -989,14 +988,14 @@ async def get_image_reply(ctx: RoleContext, user_text: str, history: list,
                 content_parts.append({"type": "image_url",
                                       "image_url": {"url": f"data:{mime};base64,{img_b64}"}})
             content_parts.append({"type": "text", "text": prompt_text})
+            vision_messages = [{"role": "system", "content": system_content}]
+            vision_messages.extend(history_msgs)
+            vision_messages.append({"role": "user", "content": content_parts})
             if not base_url.endswith("/v1"):
                 base_url += "/v1"
             payload = {
                 "model": model,
-                "messages": [
-                    {"role": "system", "content": system_content},
-                    {"role": "user", "content": content_parts}
-                ],
+                "messages": vision_messages,
                 "stream": False,
                 "temperature": float(ctx.get("temperature", 0.7)),
                 "max_tokens": 512
