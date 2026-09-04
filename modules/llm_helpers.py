@@ -377,6 +377,13 @@ def build_system_prompt(ctx: RoleContext, emotions: dict, extra_parts: Optional[
         str(ctx.get("json_prompt", "") or ""),
         str(ctx.get("supplement_prompt", "") or ""),
     ]
+    parts.append(
+        "【重要规则】用户的昵称（或ID）仅仅是用来区分聊天对象的一个标签，"
+        "它绝对不代表用户当前的身体状态、情绪、意图或请求。"
+        "严禁根据用户的昵称字面意思去猜测用户的状态，"
+        "严禁对用户的昵称进行发散、调侃或过度联想。"
+        "必须严格根据用户当前发送的文字内容进行回复。"
+    )
     emotion_keys = list(emotions.keys()) if emotions else []
     if ctx.get("llm_judge", True) and emotion_keys:
         parts.append(f"【情绪可选列表】{', '.join(emotion_keys)}")
@@ -1068,22 +1075,32 @@ def file_uri_to_path(uri: str) -> str:
 
 
 async def download_image(url: str) -> bytes:
-    """下载网络图片。QQ 图床会 302 跳 CDN，必须跟随重定向；带 Referer 应对防盗链。"""
-    headers = {
+    """下载网络图片。带动态 Referer 与 400 重试机制。"""
+    base_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
     }
-    if "://" in url:
-        host = url.split("/", 3)[2]
-        if any(d in host for d in ("qq.com", "qpic.cn", "gtimg.cn")):
-            headers["Referer"] = "https://gchat.qpic.cn/"
-    async with httpx.AsyncClient(timeout=30, headers=headers, follow_redirects=True,
+    host = url.split("/", 3)[2] if "://" in url else ""
+    headers = {**base_headers}
+    # 只有 QQ 图床才加 Referer，并且 Referer 动态等于 URL 本身的 Host
+    if any(d in host for d in ("qq.com", "qpic.cn", "gtimg.cn")):
+        headers["Referer"] = f"https://{host}/"
+    
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True,
                                  proxy=None, trust_env=False) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-        return resp.content
-
+        try:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            return resp.content
+        except httpx.HTTPStatusError as e:
+            # 若依然 400，说明该图床强制要求不带 Referer，去掉后再次尝试
+            if e.response.status_code == 400:
+                headers.pop("Referer", None)
+                resp = await client.get(url, headers=headers)
+                resp.raise_for_status()
+                return resp.content
+            raise
 
 def normalize_image_data(data: bytes, mime: str):
     """WebP 转成 JPEG/PNG（多数推理后端不支持），超大图等比缩小到 2048 内。

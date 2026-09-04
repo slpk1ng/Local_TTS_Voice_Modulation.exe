@@ -49,7 +49,7 @@ from modules.llm_helpers import (RoleContext, build_chat_messages, chat_once,
                                 normalize_single, sentence_obj_has_text,
                                 split_multi_clause_sentences,
                                 stream_chat,
-                                SentenceStreamParser, get_image_reply)
+                                SentenceStreamParser, get_image_reply, download_image) 
 from modules.tts import synthesize_sentence, get_audio_duration, resolve_tts_path
 from modules.tts_service import (process_manager, ensure_tts_service,
                                  auto_start_and_switch_tts)
@@ -943,24 +943,23 @@ def _spawn(coro):
 
 
 def pick_image_source(seg) -> Optional[str]:
-    """从图片消息段挑出可用的图片来源（本地路径 / http(s) URL / file://）。
-
-    NapCat 的 file 常是裸文件名（如 ABC.image），既非本地路径也非 URL，
-    此时必须回退到 path/url 字段，否则识图永远拿不到图。
+    """直接使用网络 URL，不强制下载到本地。
+    交给 llm_helpers 里的 download_image 动态处理 Referer。
     """
-    srcs = [str(s) for s in (getattr(seg, "file", None), getattr(seg, "path", None),
-                             getattr(seg, "url", None)) if s]
-    chosen = next((s for s in srcs if os.path.isfile(s)
-                   or s.startswith(("http://", "https://", "file://"))), None)
-    return chosen or (srcs[0] if srcs else None)
+    url = getattr(seg, "url", None)
+    if url:
+        return str(url)
+    p = getattr(seg, "path", None)
+    if p and os.path.isfile(str(p)):
+        return str(p)
+    f = getattr(seg, "file", None)
+    if f and not str(f).startswith(("http://", "https://")):
+        return str(f)
+    return None
 
 
 async def fetch_quoted_context(client, reply_seg) -> Optional[dict]:
-    """回查被引用消息的内容与发送者。
-
-    OneBot v11 的 Reply 段只带被引用消息的 id，引用内容需要用 get_msg 回查；
-    接口不可用（如测试替身）或回查失败时返回 None，不影响正常回复。
-    """
+    """回查被引用消息的内容与发送者。"""
     getter = getattr(client, "get_msg", None)
     if getter is None:
         return None
@@ -1050,6 +1049,7 @@ async def handle_message_event(event, client):
             has_image = True
             chosen = pick_image_source(seg)
             if chosen and chosen not in image_urls:
+                # 直接将图片 URL 加入，不下载
                 image_urls.append(chosen)
         elif isinstance(seg, At):
             if str(seg.qq) == str(client.self_id):
@@ -1057,8 +1057,6 @@ async def handle_message_event(event, client):
         elif isinstance(seg, Reply):
             reply_seg = seg
 
-    # 引用消息：回查被引用内容，拼进用户消息传给 LLM；
-    # 引用的是机器人自己的消息时视同 @ 机器人；引用的图片同样送识图
     if reply_seg is not None:
         quoted = await fetch_quoted_context(client, reply_seg)
         if quoted:
@@ -1072,7 +1070,6 @@ async def handle_message_event(event, client):
             user_text = f"{quote_note}\n{user_text}" if user_text else quote_note
 
     if not is_private and not at_bot:
-        # 群聊未 @ 机器人：默认不回复（group_need_at=False 恢复旧的「全部回复」行为）
         if global_config.get("group_need_at", True) or global_config.get("only_private", False):
             return
     if not user_text and not has_image:
@@ -1088,8 +1085,8 @@ async def handle_message_event(event, client):
     meta["user_msg_count"] = int(meta.get("user_msg_count", 0)) + 1
     meta["last_user_text"] = user_text[:200]
     data["meta"] = meta
-    # 图片消息在历史中留下 [图片] 标记，否则识图回复之外，
-    # 文本 LLM 完全不知道发生过图片交互，两条链路上下文不互通
+    
+    # 初始历史（之后会在识图成功后更新描述）
     history_text = (f"{user_text} [图片]".strip() if has_image
                     else user_text) or "[图片]"
     history.append({
@@ -1116,7 +1113,6 @@ async def handle_message_event(event, client):
     first_reply_done = False
 
     async def process_role_reply(role: dict, trigger_text: str) -> bool:
-        """让指定角色对 trigger_text 生成并回复一次，返回是否成功。"""
         nonlocal total_replies, first_reply_done
         if total_replies >= max_total:
             return False
@@ -1125,7 +1121,6 @@ async def handle_message_event(event, client):
 
         extra_parts = []
         use_history = history
-        # 摘要与话题注入（动态上下文）
         if global_config.get("summary_enabled", False) and meta.get("summary"):
             keep = max(1, int(global_config.get("summary_max_history", 5)))
             use_history = history[-keep:]
@@ -1141,7 +1136,6 @@ async def handle_message_event(event, client):
             if rc:
                 extra_parts.append(rc)
 
-        # 流式：首句即可发送；其余路径统一发送
         sink = None
         if global_config.get("streaming_enabled", False) and not first_reply_done:
             sink = SentenceSink(session_type, target_id, emotions, ctx)
@@ -1155,15 +1149,22 @@ async def handle_message_event(event, client):
         if sink is not None:
             await sink.flush()
             if (not reply or not reply.get("sentences")) and sink.sent_sentences:
-                # 流式中断但已发出部分句子：以已发送内容入库，保持记忆与实际发送一致
                 reply = {"sentences": sink.sent_sentences, "llm_ms": 0, "tool_trace": []}
             tts_ms = sink.tts_ms
         if not reply or not reply.get("sentences"):
             return False
 
+        # ====== 上下文互通核心逻辑：回填图片描述 ======
+        if has_image:
+            # 获取机器人刚生成的中文台词作为图片描述
+            img_desc = "".join(s.get("zh", "") for s in reply["sentences"]).strip()
+            if img_desc:
+                # 修改刚刚添加的那条用户历史消息
+                history[-1]["content"] = f"{user_text} [图片: bot可能看到了 {img_desc[:30]}]"
+        # ================================================
+
         if sink is not None:
             if sink.sent == 0:
-                # 流式解析未产出（模型未输出JSON），走统一发送
                 await sender.send_reply(session_type, target_id, reply["sentences"],
                                         emotions, ctx,
                                         use_voice=global_config.get("tts_reply_enabled", True))
@@ -1190,7 +1191,6 @@ async def handle_message_event(event, client):
         if stats_mgr:
             stats_mgr.record_message(session_id)
 
-        # 用户画像自动提取（后台）
         if profile_mgr and global_config.get("profiles_enabled", False) and \
                 global_config.get("profiles_auto_extract", False) and not first_reply_done:
             _spawn(profile_mgr.extract_from_dialog(ctx, trigger_text, zh_text, sender_id))
@@ -1207,7 +1207,6 @@ async def handle_message_event(event, client):
                 break
             await process_role_reply(role, user_text)
 
-        # 角色间互相回应（自动轮数）
         rounds = int(global_config.get("multi_role_auto_rounds", 0) or 0)
         if global_config.get("multi_role_enabled", False) and rounds > 0 and len(target_roles) > 1:
             for _ in range(rounds):
@@ -1227,10 +1226,7 @@ async def handle_message_event(event, client):
         print(f"回复生成失败: {type(e).__name__}: {e}")
 
     memory_manager.cleanup_voice_cache(global_config.get("max_voice_cache", 20))
-
-    # 摘要与话题维护（后台异步）
     _spawn(post_reply_context_tasks(session_id, get_active_ctx()))
-
 
 async def post_reply_context_tasks(session_id: str, ctx: RoleContext):
     """对话后维护：自动摘要 + 话题检测（均为可开关功能）。"""
